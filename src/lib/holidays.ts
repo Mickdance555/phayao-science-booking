@@ -1,0 +1,105 @@
+import { format, getDay } from "date-fns";
+
+export const PUBLIC_HOLIDAYS = [
+  "2026-01-01", // New Year's Day
+  "2026-01-02", // New Year Extra
+  "2026-02-13", // Makha Bucha
+  "2026-04-06", // Chakri Day
+  "2026-04-13", // Songkran
+  "2026-04-14", // Songkran
+  "2026-04-15", // Songkran
+  "2026-05-01", // Labor Day
+  "2026-05-04", // Coronation Day
+  "2026-05-31", // Visakha Bucha
+  "2026-06-03", // Queen's Birthday
+  "2026-07-28", // King's Birthday
+  "2026-07-29", // Asahna Bucha
+  "2026-07-30", // Buddhist Lent Day
+  "2026-08-12", // Mother's Day
+  "2026-10-13", // King Bhumibol Memorial Day
+  "2026-10-23", // Chulalongkorn Day
+  "2026-12-05", // Father's Day
+  "2026-12-10", // Constitution Day
+  "2026-12-31", // New Year's Eve
+];
+
+/**
+ * อุทยานวิทยาศาสตร์และดาราศาสตร์ อบจ.พะเยา
+ * เปิดบริการ: วันอังคาร - วันอาทิตย์ (08:30 - 16:30 น.)
+ * ปิดทำการ: วันจันทร์ (Monday = 1) และวันหยุดนักขัตฤกษ์
+ */
+export const isOperationalDay = (date: Date): boolean => {
+  // 1. วันจันทร์เป็นวันหยุดประจำสัปดาห์ของอุทยานฯ
+  if (getDay(date) === 1) return false;
+
+  // 2. ตรวจสอบวันหยุดนักขัตฤกษ์
+  const dateStr = format(date, 'yyyy-MM-dd');
+  if (PUBLIC_HOLIDAYS.includes(dateStr)) return false;
+
+  return true;
+};
+
+export interface BookingSession {
+  id: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  description: string;
+  icon?: string;
+}
+
+export interface BookingConfig {
+  openTime: string;
+  closeTime: string;
+  closeHour: number;
+  closeMinute: number;
+  sessions: BookingSession[];
+  slots: string[];
+}
+
+export const PARK_SESSIONS: BookingSession[] = [
+  {
+    id: "morning",
+    name: "รอบเช้า (Morning Session)",
+    startTime: "09:00",
+    endTime: "12:00",
+    description: "ชมนิทรรศการ 8 โซน + ชมโดมท้องฟ้าจำลองรอบเช้า"
+  },
+  {
+    id: "afternoon",
+    name: "รอบบ่าย (Afternoon Session)",
+    startTime: "13:00",
+    endTime: "16:00",
+    description: "ชมนิทรรศการ 8 โซน + ชมโดมท้องฟ้าจำลองรอบบ่าย"
+  },
+  {
+    id: "fullday",
+    name: "รอบเต็มวัน (Full-Day Session)",
+    startTime: "09:00",
+    endTime: "16:00",
+    description: "กิจกรรมค่ายวิทยาศาสตร์ ทัศนศึกษาเต็มวัน รวมฐานปฏิบัติการแล็บ"
+  }
+];
+
+export const getBookingConfig = (date: Date): BookingConfig => {
+  if (!isOperationalDay(date)) {
+    return {
+      openTime: "08:30",
+      closeTime: "16:30",
+      closeHour: 16,
+      closeMinute: 30,
+      sessions: [],
+      slots: []
+    };
+  }
+
+  return {
+    openTime: "08:30",
+    closeTime: "16:30",
+    closeHour: 16,
+    closeMinute: 30,
+    sessions: PARK_SESSIONS,
+    // เวลาเริ่มรอบที่เปิดให้เลือกได้
+    slots: ["09:00", "10:00", "11:00", "13:00", "14:00", "15:00"]
+  };
+};
