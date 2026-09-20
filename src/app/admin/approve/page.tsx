@@ -163,7 +163,7 @@ export default function ApprovePage() {
                   
                   <div className="space-y-4">
                     <div>
-                      <h3 className="text-xl font-black text-slate-800 mb-1">{pUser.fullName}</h3>
+                      <h3 className="text-xl font-black text-slate-800 mb-1">{pUser.displayName}</h3>
                       <div className="flex items-center gap-2 text-blue-600 font-bold text-xs uppercase tracking-tighter">
                          <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
                          {pUser.memberId}

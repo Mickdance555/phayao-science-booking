@@ -130,7 +130,7 @@ export default function AdminBlockedDatesPage() {
         reason: finalReason,
         dates: datesArray,
         createdAt: Timestamp.now(),
-        createdBy: user?.fullName || firebaseUser?.email || "Admin"
+        createdBy: user?.displayName || firebaseUser?.email || "Admin"
       };
 
       if (dateMode === "single") {

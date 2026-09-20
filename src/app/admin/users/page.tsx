@@ -198,13 +198,13 @@ export default function UserManagementPage() {
 
       await addDoc(collection(db, "banRequests"), {
         targetUserId: selectedUser.id,
-        targetUserName: selectedUser.fullName,
+        targetUserName: selectedUser.displayName,
         targetUserEmail: selectedUser.email,
         targetUserPhone: selectedUser.phone,
         targetUserIdCard: selectedUser.idCard,
         reason: penaltyReason,
         createdBy: currentUser.uid,
-        createdByName: currentUser.fullName,
+        createdByName: currentUser.displayName,
         createdAt: Timestamp.now(),
         approvers: [currentUser.uid],
         approvalCount: 1,
@@ -235,7 +235,7 @@ export default function UserManagementPage() {
   };
 
   const filteredUsers = users.filter(u => {
-    const matchesSearch = u.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch = u.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           u.memberId?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filter === 'all' || u.status === filter;
@@ -308,7 +308,7 @@ export default function UserManagementPage() {
               >
                 <div className="flex items-center justify-between mb-8">
                    <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 relative overflow-hidden group-hover:scale-105 transition-all shadow-inner">
-                      {u.photoURL ? <img src={u.photoURL} alt={u.fullName} className="w-full h-full object-cover" /> : <UserIcon size={24} />}
+                      {u.photoURL ? <img src={u.photoURL} alt={u.displayName} className="w-full h-full object-cover" /> : <UserIcon size={24} />}
                    </div>
                    <div className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] border ${u.role === 'admin' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
                       {u.role}
@@ -317,7 +317,7 @@ export default function UserManagementPage() {
 
                 <div className="space-y-6">
                    <div>
-                      <h3 className="text-xl font-black text-slate-800 mb-1">{u.fullName}</h3>
+                      <h3 className="text-xl font-black text-slate-800 mb-1">{u.displayName}</h3>
                       <div className="text-blue-600 font-bold text-xs flex items-center gap-2 uppercase tracking-tighter">
                          <div className={`w-2 h-2 rounded-full ${u.status === 'active' ? 'bg-green-500 shadow-lg shadow-green-200' : 'bg-yellow-500 shadow-lg shadow-yellow-200'}`}></div>
                          {u.memberId || 'รอดำเนินการ'}
@@ -403,7 +403,7 @@ export default function UserManagementPage() {
                  <div className="space-y-2">
                     <h2 className="text-2xl font-black text-slate-900 leading-tight">ยืนยันการลบสมาชิก?</h2>
                     <p className="text-slate-400 font-bold px-4">
-                       คุณกำลังจะลบ <span className="text-slate-800">{selectedUser.fullName}</span> ข้อมูลทั้งหมดจะหายไปและไม่สามารถกู้คืนได้
+                       คุณกำลังจะลบ <span className="text-slate-800">{selectedUser.displayName}</span> ข้อมูลทั้งหมดจะหายไปและไม่สามารถกู้คืนได้
                     </p>
                  </div>
 
@@ -460,7 +460,7 @@ export default function UserManagementPage() {
                  <div className="w-20 h-20 bg-orange-50 text-orange-500 rounded-[2.5rem] flex items-center justify-center mx-auto shadow-inner"><Siren size={40} /></div>
                  <div className="space-y-2">
                     <h2 className="text-2xl font-black text-slate-900 leading-tight">ระงับการใช้งานชั่วคราว</h2>
-                    <p className="text-slate-400 font-bold px-4">ระงับบัญชี {selectedUser.fullName} ชั่วคราว</p>
+                    <p className="text-slate-400 font-bold px-4">ระงับบัญชี {selectedUser.displayName} ชั่วคราว</p>
                  </div>
 
                  <div className="space-y-6 text-left">
@@ -512,7 +512,7 @@ export default function UserManagementPage() {
                  <div className="w-20 h-20 bg-slate-900 text-white rounded-[2.5rem] flex items-center justify-center mx-auto shadow-2xl rotate-3"><UserX size={40} /></div>
                  <div className="space-y-2">
                     <h2 className="text-2xl font-black text-slate-900 leading-tight">ขอระงับใช้งานถาวร</h2>
-                    <p className="text-slate-400 font-bold px-4">ต้องการแบน {selectedUser.fullName} ถาวรหรือไม่?</p>
+                    <p className="text-slate-400 font-bold px-4">ต้องการแบน {selectedUser.displayName} ถาวรหรือไม่?</p>
                     <div className="mt-2 bg-slate-50 p-4 rounded-2xl flex items-center gap-3 text-left">
                        <AlertCircle size={20} className="text-blue-500 flex-shrink-0" />
                        <p className="text-[10px] font-bold text-slate-500">การแบนถาวรต้องได้รับการอนุมัติจากผู้ดูแลระบบทั้งหมดในคณะกรรมการถึงจะมีผล และข้อมูลจะถูกบันทึกเข้า Blacklist ทันที</p>
