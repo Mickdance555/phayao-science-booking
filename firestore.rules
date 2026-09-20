@@ -2,31 +2,30 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ===== USERS =====
+    // ===== USERS (Admin / Staff accounts) =====
     match /users/{userId} {
-      // อนุญาตให้ผู้ล็อกอินอ่านข้อมูลสมาชิกได้ (จำเป็นสำหรับเช็คผู้ร่วมใช้งาน)
       allow read: if request.auth != null;
-      // สร้างและแก้ไขได้เฉพาะเจ้าของบัญชี
       allow create, update: if request.auth != null && request.auth.uid == userId;
-      // Admin จัดการได้ทุกคน
       allow write: if request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // ===== BOOKINGS =====
+    // ===== BOOKINGS (Public Guest Bookings) =====
     match /bookings/{bookingId} {
-      allow read, create: if request.auth != null;
-      allow update: if request.auth != null && (
-        request.auth.uid == resource.data.userId ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
-      );
+      // สาธารณะสามารถอ่านได้เพื่อแสดงผลในปฏิทิน และตรวจสอบสถานะด้วยรหัสจอง+เบอร์โทร
+      allow read: if true;
+      // ประชาชนทั่วไปสามารถส่งคำขอจองได้โดยไม่ต้องเข้าสู่ระบบ
+      allow create: if true;
+      // อัปเดตคำขอเปลี่ยนแปลง/ยกเลิก หรือเจ้าหน้าที่อนุมัติ
+      allow update: if true;
+      // ลบได้เฉพาะ Admin
       allow delete: if request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // ===== BLACKLIST =====
-    match /blacklist/{docId} {
-      allow read: if request.auth != null;
+    // ===== BLOCKED DATES (วันงดรับจองที่เจ้าหน้าที่กำหนด) =====
+    match /blocked_dates/{docId} {
+      allow read: if true;
       allow write: if request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }

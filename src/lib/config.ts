@@ -5,7 +5,9 @@ export const SITE_CONFIG = {
   department: "กองการศึกษา ศาสนาและวัฒนธรรม องค์การบริหารส่วนจังหวัดพะเยา",
   address: "เลขที่ 111 หมู่ 8 ต.บ้านต๋อม อ.เมืองพะเยา จ.พะเยา 56000",
   phone: "054-480-194",
-  facebookUrl: "https://www.facebook.com/sciparkphayao/?locale=th_TH",
+  phoneDisplay: "054-480-194",
+  facebookUrl: "https://www.facebook.com/sciparkphayao",
+  facebookName: "อุทยานวิทยาศาสตร์และดาราศาสตร์ อบจ.พะเยา",
   openingHours: "วันอังคาร - วันอาทิตย์ 08:30 - 16:30 น.",
   closedDaysNote: "ปิดทำการทุกวันจันทร์ และวันหยุดนักขัตฤกษ์",
   maxBookingDaysAhead: 30, // สามารถจองล่วงหน้าได้ 30 วัน

@@ -5,20 +5,24 @@ import { useAuth } from "@/context/AuthContext";
 import { 
   LogOut, 
   Home, 
-  History, 
+  CalendarCheck, 
+  Search, 
+  FileText, 
   ShieldCheck, 
-  Users, 
-  LayoutDashboard,
-  LogIn,
-  TrendingUp,
-  Telescope,
-  Sparkles,
-  CalendarCheck
+  LayoutDashboard, 
+  CalendarX, 
+  TrendingUp, 
+  Telescope, 
+  Sparkles, 
+  Phone,
+  Lock
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { SITE_CONFIG } from "@/lib/config";
+import FacebookIcon from "@/components/FacebookIcon";
 
 export default function Navbar() {
-  const { user, firebaseUser, logout, signInWithGoogle } = useAuth();
+  const { user, firebaseUser, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -28,8 +32,9 @@ export default function Navbar() {
   }, []);
 
   return (
-    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 px-4 py-4 ${scrolled ? 'bg-slate-900/90 backdrop-blur-xl shadow-2xl shadow-cyan-950/20 border-b border-cyan-500/20' : 'bg-transparent'}`}>
+    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 px-4 py-4 ${scrolled ? 'bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-cyan-950/20 border-b border-cyan-500/20' : 'bg-transparent'}`}>
       <div className="max-w-7xl mx-auto flex items-center justify-between bg-white/10 backdrop-blur-md rounded-[2.5rem] p-3 sm:px-6 border border-white/10 shadow-lg">
+        {/* Logo / Brand */}
         <Link href="/" className="flex items-center gap-3 group">
           <div className="w-11 h-11 bg-gradient-to-tr from-cyan-600 via-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-cyan-500/30 group-hover:rotate-12 transition-transform">
             <Telescope size={22} className="text-cyan-200" />
@@ -43,80 +48,86 @@ export default function Navbar() {
           </div>
         </Link>
 
-        <div className="flex items-center gap-3 sm:gap-6">
-          <Link href="/" className="flex items-center gap-2 text-sm font-black transition-colors text-slate-200 hover:text-cyan-300">
-            <Home size={18} />
+        {/* Public Navigation Menu */}
+        <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
+          <Link href="/" className="flex items-center gap-1.5 text-xs sm:text-sm font-black transition-colors text-slate-200 hover:text-cyan-300">
+            <Home size={16} />
             <span className="hidden md:inline">หน้าหลัก</span>
           </Link>
-          
-          {user && user.status === "active" && (
-            <>
-              <Link href="/dashboard" className="flex items-center gap-2 text-sm font-black transition-colors text-slate-200 hover:text-cyan-300">
-                <CalendarCheck size={18} className="text-cyan-400" />
-                <span className="hidden md:inline">จองคิวเยี่ยมชม</span>
-              </Link>
-              <Link href="/history" className="flex items-center gap-2 text-sm font-black transition-colors text-slate-200 hover:text-cyan-300">
-                <History size={18} />
-                <span className="hidden md:inline">ประวัติและบัตร QR</span>
-              </Link>
-            </>
-          )}
 
-          {user && user.role === "admin" && (
-            <div className="flex items-center gap-3 sm:gap-4">
-              <Link href="/admin" className="flex items-center gap-1.5 text-xs sm:text-sm font-black text-cyan-300 hover:text-white transition-colors bg-cyan-950/60 border border-cyan-500/30 px-3 py-1.5 rounded-xl">
-                <ShieldCheck size={16} />
-                <span className="hidden lg:inline">สแกนเช็คอิน</span>
-              </Link>
-              <Link href="/admin/bookings" className="flex items-center gap-1.5 text-xs sm:text-sm font-black text-slate-300 hover:text-cyan-300 transition-colors">
-                <LayoutDashboard size={16} />
-                <span className="hidden lg:inline">จัดการการจอง</span>
-              </Link>
-              <Link href="/admin/users" className="flex items-center gap-1.5 text-xs sm:text-sm font-black text-slate-300 hover:text-cyan-300 transition-colors">
-                <Users size={16} />
-                <span className="hidden lg:inline">จัดการสมาชิก</span>
-              </Link>
-              <Link href="/admin/reports" className="flex items-center gap-1.5 text-xs sm:text-sm font-black text-slate-300 hover:text-cyan-300 transition-colors">
-                <TrendingUp size={16} />
-                <span className="hidden lg:inline">สถิติรายงาน</span>
-              </Link>
-            </div>
-          )}
+          <Link href="/book" className="flex items-center gap-1.5 text-xs sm:text-sm font-black transition-colors text-cyan-300 hover:text-white bg-cyan-950/70 border border-cyan-500/30 px-3 py-1.5 rounded-xl hover:bg-cyan-900">
+            <CalendarCheck size={16} className="text-cyan-400" />
+            <span>จองเข้าชม</span>
+          </Link>
+
+          <Link href="/status" className="flex items-center gap-1.5 text-xs sm:text-sm font-black transition-colors text-slate-200 hover:text-cyan-300">
+            <Search size={16} />
+            <span className="hidden sm:inline">ตรวจสถานะ</span>
+          </Link>
+
+          <Link href="/visit-info" className="flex items-center gap-1.5 text-xs sm:text-sm font-black transition-colors text-slate-200 hover:text-cyan-300">
+            <FileText size={16} />
+            <span className="hidden lg:inline">ข้อมูลเตรียมตัว</span>
+          </Link>
+
+          {/* Contacts */}
+          <div className="hidden xl:flex items-center gap-2 pl-2">
+            <a 
+              href={SITE_CONFIG.facebookUrl} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="p-2 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white rounded-xl transition-all border border-blue-500/30"
+              title="Facebook: อุทยานวิทยาศาสตร์และดาราศาสตร์ อบจ.พะเยา"
+            >
+              <FacebookIcon className="w-4 h-4 fill-current" />
+            </a>
+            <a 
+              href={`tel:${SITE_CONFIG.phone}`} 
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white rounded-xl transition-all border border-cyan-500/30 text-xs font-bold"
+              title={`โทรศัพท์ติดต่อ ${SITE_CONFIG.phone}`}
+            >
+              <Phone size={13} className="text-cyan-400" />
+              <span>{SITE_CONFIG.phone}</span>
+            </a>
+          </div>
 
           <div className="h-6 w-[1px] bg-white/20 mx-1 hidden sm:block"></div>
 
+          {/* Admin / Staff Controls */}
           {firebaseUser ? (
-            <div className="flex items-center gap-3">
-               {user && user.status === "active" && (
-                 <Link href="/dashboard" className="hidden lg:flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-2xl font-black text-xs shadow-lg shadow-cyan-500/20 hover:scale-105 transition-all">
-                    <CalendarCheck size={16} />
-                    จองคิวใหม่
-                 </Link>
-               )}
-               <button 
+            <div className="flex items-center gap-2">
+              <Link 
+                href="/admin/bookings" 
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 hover:text-white rounded-xl text-xs font-black transition-all"
+                title="ระบบจัดการหลังบ้าน"
+              >
+                <ShieldCheck size={16} />
+                <span className="hidden lg:inline">แอดมิน</span>
+              </Link>
+              <Link 
+                href="/admin/blocked-dates" 
+                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 border border-red-500/30 text-red-300 hover:text-white rounded-xl text-xs font-bold transition-all"
+                title="จัดการวันงดรับจอง"
+              >
+                <CalendarX size={14} />
+                <span>งดรับจอง</span>
+              </Link>
+              <button 
                 onClick={logout}
-                className="p-2.5 bg-red-500/10 text-red-400 border border-red-500/30 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm active:scale-95"
-                title="ออกจากระบบ"
-               >
-                 <LogOut size={18} />
-               </button>
+                className="p-2 bg-red-500/10 text-red-400 border border-red-500/30 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm active:scale-95"
+                title="ออกจากระบบเจ้าหน้าที่"
+              >
+                <LogOut size={16} />
+              </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2 sm:gap-3">
-              <button 
-                onClick={signInWithGoogle}
-                className="px-4 py-2.5 bg-white/10 text-white border border-white/20 rounded-2xl text-xs sm:text-sm font-black hover:bg-white/20 transition-all active:scale-95 backdrop-blur-md"
-              >
-                สมัครสมาชิก
-              </button>
-              <button 
-                onClick={signInWithGoogle}
-                className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-2xl text-xs sm:text-sm font-black flex items-center gap-2 hover:from-cyan-400 hover:to-blue-500 hover:shadow-xl hover:shadow-cyan-500/25 transition-all active:scale-95 shadow-lg shadow-cyan-900/40"
-              >
-                <LogIn size={16} />
-                เข้าสู่ระบบ
-              </button>
-            </div>
+            <Link 
+              href="/admin" 
+              className="p-2 text-slate-400 hover:text-cyan-300 hover:bg-white/10 rounded-xl transition-all text-xs font-bold"
+              title="สำหรับเจ้าหน้าที่ / ผู้ดูแลระบบ"
+            >
+              <Lock size={16} />
+            </Link>
           )}
         </div>
       </div>

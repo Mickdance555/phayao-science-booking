@@ -11,17 +11,21 @@ import {
   Trash2, 
   Loader2, 
   ChevronRight,
-  AlertTriangle,
-  User as UserIcon,
-  CheckCircle2,
-  XCircle,
-  Eye,
-  Users as UsersIcon,
-  X,
-  Info,
-  Building2,
-  Phone,
-  Telescope
+  AlertTriangle, 
+  CheckCircle2, 
+  XCircle, 
+  Eye, 
+  Users as UsersIcon, 
+  X, 
+  Info, 
+  Building2, 
+  Phone, 
+  Telescope,
+  CalendarX,
+  FileEdit,
+  Send,
+  HelpCircle,
+  Sparkles
 } from "lucide-react";
 import { 
   collection, 
@@ -30,71 +34,141 @@ import {
   orderBy, 
   deleteDoc, 
   doc, 
-  Timestamp,
-  updateDoc
+  Timestamp, 
+  updateDoc,
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { format, isSameDay } from "date-fns";
 import { th } from "date-fns/locale";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function AdminBookingsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, firebaseUser, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"all" | "pending" | "changes">("all");
   
-  // Modals
+  // Modals & Staff note editing
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [selectedBookingDetails, setSelectedBookingDetails] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [editingStaffNoteId, setEditingStaffNoteId] = useState<string | null>(null);
+  const [staffNoteDraft, setStaffNoteDraft] = useState("");
 
   useEffect(() => {
-    if (!authLoading && (!user || user.role !== 'admin')) {
-      router.push("/");
-    }
-    if (user?.role === 'admin') {
-      fetchBookings();
-    }
-  }, [user, authLoading, router]);
+    fetchBookings();
+  }, []);
 
-  const fetchBookings = async () => {
+  const fetchBookings = () => {
     setLoading(true);
-    try {
-      const q = query(collection(db, "bookings"), orderBy("startTime", "desc"));
-      const querySnapshot = await getDocs(q);
-      const bookingData = querySnapshot.docs.map(doc => {
+    const q = query(collection(db, "bookings"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const bookingData = snapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
           ...data,
-          start: (data.startTime as Timestamp).toDate(),
-          end: (data.endTime as Timestamp).toDate(),
-          created: (data.createdAt as Timestamp)?.toDate() || (data.startTime as Timestamp).toDate()
+          start: data.startTime ? (data.startTime as Timestamp).toDate() : null,
+          end: data.endTime ? (data.endTime as Timestamp).toDate() : null,
+          created: data.createdAt ? (data.createdAt as Timestamp).toDate() : new Date()
         };
       });
       setBookings(bookingData);
-    } catch (e) {
-      console.error("Error fetching bookings:", e);
-    } finally {
       setLoading(false);
-    }
+    }, (err) => {
+      console.error("Error fetching bookings:", err);
+      setLoading(false);
+    });
+    return unsub;
   };
 
-  const handleStatusUpdate = async (id: string, newStatus: string) => {
+  const handleStatusUpdate = async (id: string, newStatus: string, defaultNote?: string) => {
     try {
       await updateDoc(doc(db, "bookings", id), {
         status: newStatus,
         updatedAt: Timestamp.now(),
-        ...(newStatus === 'cancelled' ? { cancelledAt: Timestamp.now() } : {})
+        ...(defaultNote ? { staffNote: defaultNote } : {})
       });
-      setBookings(bookings.map(b => b.id === id ? { ...b, status: newStatus } : b));
     } catch (error: any) {
       console.error("Error updating status:", error);
-      alert("เกิดข้อผิดพลาดในการปรับปรุงสถานะ: " + (error.message || "กรุณาลองใหม่อีกครั้ง"));
+      alert("เกิดข้อผิดพลาดในการปรับปรุงสถานะ: " + error.message);
+    }
+  };
+
+  const handleSaveStaffNote = async (id: string) => {
+    try {
+      await updateDoc(doc(db, "bookings", id), {
+        staffNote: staffNoteDraft.trim(),
+        updatedAt: Timestamp.now()
+      });
+      setEditingStaffNoteId(null);
+      setStaffNoteDraft("");
+    } catch (error: any) {
+      console.error("Error updating staff note:", error);
+      alert("เกิดข้อผิดพลาด: " + error.message);
+    }
+  };
+
+  const handleApproveChangeRequest = async (booking: any, reqIndex: number) => {
+    const req = booking.changeRequests[reqIndex];
+    if (!req) return;
+
+    try {
+      const updatedRequests = [...booking.changeRequests];
+      updatedRequests[reqIndex] = { ...req, status: "approved", processedAt: Timestamp.now() };
+
+      const updates: any = {
+        changeRequests: updatedRequests,
+        hasPendingChangeRequest: false,
+        updatedAt: Timestamp.now()
+      };
+
+      if (req.type === "cancel") {
+        updates.status = "cancelled";
+        updates.staffNote = "อนุมัติการยกเลิกการจองเรียบร้อยแล้ว";
+      } else if (req.type === "change_date" && req.newDate) {
+        updates.dates = [req.newDate];
+        updates.staffNote = `อนุมัติเปลี่ยนวันเข้าชมเป็น ${req.newDate} เรียบร้อยแล้ว`;
+      } else if (req.type === "change_session" && req.newSession) {
+        updates.sessionType = req.newSession;
+        updates.staffNote = `อนุมัติเปลี่ยนรอบเวลาเรียบร้อยแล้ว`;
+      }
+
+      await updateDoc(doc(db, "bookings", booking.id), updates);
+      alert("ดำเนินการอนุมัติคำขอเรียบร้อยแล้ว");
+    } catch (e: any) {
+      alert("เกิดข้อผิดพลาด: " + e.message);
+    }
+  };
+
+  const handleRejectChangeRequest = async (booking: any, reqIndex: number) => {
+    const reason = prompt("ระบุเหตุผลที่ไม่อนุมัติคำขอ (จะแจ้งให้ผู้จองทราบ):");
+    if (reason === null) return;
+
+    try {
+      const updatedRequests = [...booking.changeRequests];
+      updatedRequests[reqIndex] = { 
+        ...updatedRequests[reqIndex], 
+        status: "rejected", 
+        rejectReason: reason,
+        processedAt: Timestamp.now() 
+      };
+
+      await updateDoc(doc(db, "bookings", booking.id), {
+        changeRequests: updatedRequests,
+        hasPendingChangeRequest: false,
+        staffNote: `ปฏิเสธคำขอเปลี่ยนแปลง: ${reason}`,
+        updatedAt: Timestamp.now()
+      });
+      alert("บันทึกการปฏิเสธคำขอเรียบร้อยแล้ว");
+    } catch (e: any) {
+      alert("เกิดข้อผิดพลาด: " + e.message);
     }
   };
 
@@ -102,326 +176,464 @@ export default function AdminBookingsPage() {
     setIsDeleting(true);
     try {
       await deleteDoc(doc(db, "bookings", id));
-      setBookings(bookings.filter(b => b.id !== id));
       setConfirmDelete(null);
     } catch (error: any) {
       console.error("Error deleting booking:", error);
-      alert("เกิดข้อผิดพลาดในการลบข้อมูล: " + (error.message || "กรุณาลองใหม่อีกครั้ง"));
+      alert("เกิดข้อผิดพลาดในการลบข้อมูล: " + error.message);
     } finally {
       setIsDeleting(false);
     }
   };
 
+  // Filter Bookings
   const filteredBookings = bookings.filter(b => {
+    const term = searchTerm.toLowerCase().trim();
     const matchesSearch = 
-      b.userName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      b.organizationName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      b.memberId?.toLowerCase().includes(searchTerm.toLowerCase());
+      (b.bookingRef && b.bookingRef.toLowerCase().includes(term)) ||
+      (b.organizationName && b.organizationName.toLowerCase().includes(term)) ||
+      (b.contactName && b.contactName.toLowerCase().includes(term)) ||
+      (b.contactPhone && b.contactPhone.toLowerCase().includes(term)) ||
+      (b.userName && b.userName.toLowerCase().includes(term));
     
+    let matchesDate = true;
     if (filterDate) {
-      const bDate = (b.startTime as Timestamp).toDate();
-      const fDate = new Date(filterDate);
-      return matchesSearch && isSameDay(bDate, fDate);
+      if (Array.isArray(b.dates)) {
+        matchesDate = b.dates.includes(filterDate);
+      } else if (b.start) {
+        matchesDate = isSameDay(b.start, new Date(filterDate));
+      }
     }
-    
-    return matchesSearch;
+
+    if (activeTab === "pending") {
+      return matchesSearch && matchesDate && b.status === "pending";
+    }
+    if (activeTab === "changes") {
+      return matchesSearch && matchesDate && (b.hasPendingChangeRequest || (b.changeRequests && b.changeRequests.some((r: any) => r.status === "pending")));
+    }
+
+    return matchesSearch && matchesDate;
   });
 
-  if (authLoading || !user || user.role !== 'admin') return null;
+  const pendingCount = bookings.filter(b => b.status === "pending").length;
+  const changesCount = bookings.filter(b => b.hasPendingChangeRequest || (b.changeRequests && b.changeRequests.some((r: any) => r.status === "pending"))).length;
 
   return (
     <div className="min-h-screen bg-[#070b16] text-white flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
       <Navbar />
-      
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8 sm:px-6 lg:px-8 mt-16 animate-in fade-in duration-500">
-        <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-           <div className="space-y-2">
-              <div className="flex items-center gap-2 text-cyan-400 font-black uppercase tracking-widest text-xs">
-                 <ShieldCheck size={16} />
-                 Admin Control Panel • อุทยานวิทยาศาสตร์และดาราศาสตร์ อบจ.พะเยา
-              </div>
-              <h1 className="text-3xl sm:text-4xl font-black text-white leading-tight">จัดการรายการจองเข้าเยี่ยมชม</h1>
-              <p className="text-slate-400 font-bold text-sm">ตรวจสอบ อนุมัติ และจัดสรรคิวเข้าชมสำหรับโรงเรียนและคณะศึกษาดูงาน</p>
-           </div>
-           
-           <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative">
-                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                 <input 
-                  type="text" 
-                  placeholder="ค้นหาชื่อโรงเรียน หรือ ผู้จอง..."
+
+      <main className="flex-1 max-w-7xl mx-auto px-4 pt-28 pb-20 w-full">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="p-1.5 bg-cyan-600/20 text-cyan-400 rounded-lg border border-cyan-500/30">
+                <ShieldCheck size={16} />
+              </span>
+              <span className="text-xs font-black uppercase tracking-widest text-cyan-400">ระบบเจ้าหน้าที่ อบจ.พะเยา</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-white">จัดการการจองเข้าชม (Bookings Manager)</h1>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/admin/blocked-dates"
+              className="px-4 py-2.5 bg-red-950/60 border border-red-500/40 hover:bg-red-900 text-red-300 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-2"
+            >
+              <CalendarX size={16} />
+              <span>กำหนดวันงดรับจอง</span>
+            </Link>
+            <Link
+              href="/admin"
+              className="px-4 py-2.5 bg-cyan-950/60 border border-cyan-500/40 hover:bg-cyan-900 text-cyan-300 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-2"
+            >
+              <Telescope size={16} />
+              <span>สแกนเช็คอินหน้างาน</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* Tabs & Filter Bar */}
+        <div className="bg-[#0e172e] rounded-3xl p-4 sm:p-6 border border-cyan-500/20 shadow-xl mb-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            {/* Tabs */}
+            <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-cyan-500/20">
+              <button
+                onClick={() => setActiveTab("all")}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                  activeTab === "all" ? "bg-cyan-500 text-slate-950" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                ทั้งหมด ({bookings.length})
+              </button>
+
+              <button
+                onClick={() => setActiveTab("pending")}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                  activeTab === "pending" ? "bg-yellow-500 text-slate-950" : "text-slate-400 hover:text-yellow-300"
+                }`}
+              >
+                <span>รออนุมัติ</span>
+                {pendingCount > 0 && (
+                  <span className="px-1.5 py-0.2 bg-red-600 text-white rounded-full text-[10px] font-mono">
+                    {pendingCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("changes")}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                  activeTab === "changes" ? "bg-blue-500 text-slate-950" : "text-slate-400 hover:text-blue-300"
+                }`}
+              >
+                <span>คำขอเปลี่ยนแปลง</span>
+                {changesCount > 0 && (
+                  <span className="px-1.5 py-0.2 bg-red-600 text-white rounded-full text-[10px] font-mono">
+                    {changesCount}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* Search & Date Filter */}
+            <div className="flex flex-wrap items-center gap-3 flex-1 justify-end">
+              <div className="relative min-w-[240px] flex-1 max-w-sm">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input 
+                  type="text"
+                  placeholder="ค้นหา: เลขที่การจอง, โรงเรียน, ผู้ประสานงาน..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-12 pr-6 py-3.5 bg-slate-900 border border-slate-800 rounded-2xl text-xs font-bold text-white focus:border-cyan-400 focus:outline-none transition-all w-full sm:w-64"
-                 />
+                  className="w-full bg-slate-950 text-white pl-9 pr-4 py-2 rounded-xl text-xs border border-cyan-500/20 focus:outline-none focus:border-cyan-400 font-medium"
+                />
               </div>
-              <div className="relative">
-                 <CalendarIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                 <input 
-                  type="date" 
-                  value={filterDate}
-                  onChange={(e) => setFilterDate(e.target.value)}
-                  className="pl-12 pr-6 py-3.5 bg-slate-900 border border-slate-800 rounded-2xl text-xs font-bold text-white focus:border-cyan-400 focus:outline-none transition-all w-full"
-                 />
-              </div>
-           </div>
-        </header>
 
-        {loading ? (
-          <div className="py-24 flex flex-col items-center justify-center gap-4 bg-[#0e172e] rounded-3xl border border-cyan-500/20">
-             <Loader2 className="animate-spin text-cyan-400 w-10 h-10" />
-             <p className="text-slate-400 font-black tracking-widest text-xs">กำลังดึงข้อมูลการจองล่าสุด...</p>
+              <input 
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="bg-slate-950 text-white px-3 py-2 rounded-xl text-xs border border-cyan-500/20 focus:outline-none focus:border-cyan-400"
+              />
+
+              {(searchTerm || filterDate) && (
+                <button 
+                  onClick={() => { setSearchTerm(""); setFilterDate(""); }}
+                  className="px-3 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-700"
+                >
+                  ล้างตัวกรอง
+                </button>
+              )}
+            </div>
           </div>
-        ) : filteredBookings.length === 0 ? (
-          <div className="bg-[#0e172e] rounded-3xl p-16 text-center border border-cyan-500/20">
-             <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center text-slate-500 mx-auto mb-4">
-                <Search size={32} />
-             </div>
-             <h2 className="text-xl font-black text-white mb-1">ไม่พบรายการจอง</h2>
-             <p className="text-slate-400 text-xs font-medium">ลองปรับคำค้นหา หรือเลือกวันที่อื่น</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-             <div className="bg-[#0e172e] rounded-3xl shadow-xl border border-cyan-500/20 overflow-hidden">
-                <div className="overflow-x-auto">
-                   <table className="w-full text-left border-collapse">
-                      <thead>
-                         <tr className="bg-slate-950/80 border-b border-cyan-500/10">
-                            <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-wider">คณะ / สถานศึกษา</th>
-                            <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-wider">วันที่และรอบเวลา</th>
-                            <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-wider text-center">จำนวนผู้เข้าชม</th>
-                            <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-wider">สถานะ</th>
-                            <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-wider text-right">จัดการ</th>
-                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-cyan-500/10">
-                          {filteredBookings.map((booking) => {
-                             const startTime = (booking.startTime as Timestamp).toDate();
-                             const endTime = (booking.endTime as Timestamp).toDate();
-                             
-                             return (
-                                <tr key={booking.id} className="hover:bg-cyan-950/20 transition-colors">
-                                   <td className="px-6 py-4">
-                                      <div className="flex items-center gap-3">
-                                         <div className="w-10 h-10 bg-cyan-950 rounded-xl flex items-center justify-center text-cyan-300 font-black border border-cyan-500/30">
-                                            <Building2 size={20} />
-                                         </div>
-                                         <div>
-                                            <p className="font-black text-white text-sm">{booking.organizationName || booking.userName}</p>
-                                            <div className="flex items-center gap-2 text-[11px] text-slate-400 font-medium">
-                                               <span>ผู้จอง: {booking.userName}</span> • <span className="font-mono text-cyan-400">{booking.memberId}</span>
-                                            </div>
-                                         </div>
-                                      </div>
-                                   </td>
-                                   <td className="px-6 py-4">
-                                      <div className="flex items-center gap-2">
-                                         <CalendarIcon size={14} className="text-cyan-400" />
-                                         <div>
-                                            <p className="font-black text-slate-200 text-xs">{format(startTime, 'd MMMM yyyy', { locale: th })}</p>
-                                            <p className="text-[11px] font-bold text-cyan-400">{booking.sessionTitle || `${format(startTime, 'HH:mm')} - ${format(endTime, 'HH:mm')} น.`}</p>
-                                         </div>
-                                      </div>
-                                   </td>
-                                   <td className="px-6 py-4 text-center">
-                                      <span className="inline-block px-3 py-1 bg-cyan-950/80 text-cyan-300 rounded-xl text-xs font-black border border-cyan-500/30">
-                                         {booking.totalAttendees || 1} คน
-                                      </span>
-                                   </td>
-                                   <td className="px-6 py-4">
-                                      {booking.status === 'confirmed' ? (
-                                         <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-950/80 text-blue-300 rounded-full text-[10px] font-black border border-blue-500/30">
-                                            ยืนยันแล้ว
-                                         </span>
-                                      ) : booking.status === 'checked-in' ? (
-                                         <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-950/80 text-emerald-300 rounded-full text-[10px] font-black border border-emerald-500/30">
-                                            <CheckCircle2 size={12} /> เข้าชมแล้ว
-                                         </span>
-                                      ) : booking.status === 'completed' ? (
-                                         <span className="inline-flex items-center gap-1 px-3 py-1 bg-slate-900 text-slate-400 rounded-full text-[10px] font-black border border-slate-700">
-                                            เสร็จสิ้น
-                                         </span>
-                                      ) : (
-                                         <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-950/80 text-red-400 rounded-full text-[10px] font-black border border-red-500/30">
-                                            {booking.status}
-                                         </span>
-                                      )}
-                                   </td>
-                                   <td className="px-6 py-4 text-right">
-                                      <div className="flex items-center justify-end gap-2">
-                                         <button 
-                                          onClick={() => setSelectedBookingDetails(booking)}
-                                          className="p-2.5 bg-slate-900 text-cyan-400 hover:text-white hover:bg-cyan-600 rounded-xl transition-all border border-slate-800"
-                                          title="ดูรายละเอียด"
-                                         >
-                                            <Eye size={16} />
-                                         </button>
-                                         <button 
-                                          onClick={() => setConfirmDelete(booking.id)}
-                                          className="p-2.5 bg-slate-900 text-red-400 hover:text-white hover:bg-red-600 rounded-xl transition-all border border-slate-800"
-                                          title="ยกเลิก/ลบการจอง"
-                                         >
-                                            <Trash2 size={16} />
-                                         </button>
-                                      </div>
-                                   </td>
-                                </tr>
-                             );
-                          })}
-                      </tbody>
-                   </table>
+        </div>
+
+        {/* Bookings Table / List */}
+        <div className="bg-[#0e172e] rounded-3xl border border-cyan-500/20 shadow-2xl overflow-hidden">
+          {loading ? (
+            <div className="p-16 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="animate-spin text-cyan-400 w-8 h-8" />
+              <p className="text-xs text-slate-400 font-bold">กำลังโหลดรายการจอง...</p>
+            </div>
+          ) : filteredBookings.length === 0 ? (
+            <div className="p-16 text-center text-slate-400 text-xs">
+              ไม่พบข้อมูลการจองตามเงื่อนไขที่เลือก
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-950 text-slate-400 border-b border-cyan-500/15 uppercase font-black text-[10px] tracking-wider">
+                    <th className="p-4">เลขที่การจอง</th>
+                    <th className="p-4">คณะ / โรงเรียน</th>
+                    <th className="p-4">วันที่ / รอบเวลา</th>
+                    <th className="p-4 text-center">จำนวน (คน)</th>
+                    <th className="p-4">ผู้ประสานงาน</th>
+                    <th className="p-4">สถานะ</th>
+                    <th className="p-4">หมายเหตุเจ้าหน้าที่</th>
+                    <th className="p-4 text-center">จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {filteredBookings.map((b) => {
+                    const hasPendingChange = b.changeRequests && b.changeRequests.some((r: any) => r.status === "pending");
+
+                    return (
+                      <tr key={b.id} className="hover:bg-slate-900/60 transition-colors">
+                        {/* Ref */}
+                        <td className="p-4 font-mono font-bold text-cyan-300">
+                          {b.bookingRef || "PSP-LEGACY"}
+                          {hasPendingChange && (
+                            <span className="block text-[9px] text-amber-400 font-sans font-black mt-0.5">
+                              ⚠️ มีคำขอเปลี่ยนแปลง
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Org */}
+                        <td className="p-4 font-bold text-white max-w-[200px]">
+                          <span className="truncate block" title={b.organizationName}>
+                            {b.organizationName || b.userName || "-"}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-normal block">
+                            {b.visitorType || "ทั่วไป"}
+                          </span>
+                        </td>
+
+                        {/* Dates & Session */}
+                        <td className="p-4">
+                          <span className="font-bold text-white block">
+                            {Array.isArray(b.dates) ? b.dates.join(", ") : b.start ? format(b.start, 'd MMM yyyy', { locale: th }) : "-"}
+                          </span>
+                          <span className="text-[10px] text-cyan-400 block font-bold">
+                            {b.sessionTitle || b.sessionType || "-"}
+                          </span>
+                        </td>
+
+                        {/* Total Attendees */}
+                        <td className="p-4 text-center font-mono font-bold text-emerald-400 text-sm">
+                          {b.totalAttendees || b.studentsCount || 1}
+                        </td>
+
+                        {/* Contact */}
+                        <td className="p-4 text-slate-300">
+                          <span className="font-bold block">{b.contactName || b.userName || "-"}</span>
+                          <span className="font-mono text-[11px] text-slate-400 block">{b.contactPhone || b.userPhone || "-"}</span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="p-4">
+                          <select
+                            value={b.status || "pending"}
+                            onChange={(e) => handleStatusUpdate(b.id, e.target.value)}
+                            className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black border focus:outline-none ${
+                              b.status === "confirmed" || b.status === "approved"
+                                ? "bg-emerald-950 text-emerald-300 border-emerald-500/40"
+                                : b.status === "rejected"
+                                ? "bg-red-950 text-red-300 border-red-500/40"
+                                : b.status === "cancelled"
+                                ? "bg-slate-900 text-slate-400 border-slate-700"
+                                : "bg-yellow-950 text-yellow-300 border-yellow-500/40"
+                            }`}
+                          >
+                            <option value="pending">รออนุมัติ (Pending)</option>
+                            <option value="confirmed">อนุมัติแล้ว (Confirmed)</option>
+                            <option value="rejected">ไม่อนุมัติ (Rejected)</option>
+                            <option value="cancelled">ยกเลิกแล้ว (Cancelled)</option>
+                            <option value="checked-in">เข้าชมแล้ว (Completed)</option>
+                          </select>
+                        </td>
+
+                        {/* Staff Note */}
+                        <td className="p-4 max-w-[200px]">
+                          {editingStaffNoteId === b.id ? (
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="text"
+                                value={staffNoteDraft}
+                                onChange={(e) => setStaffNoteDraft(e.target.value)}
+                                className="w-full px-2 py-1 bg-slate-950 text-white rounded-lg border border-cyan-400 text-xs focus:outline-none"
+                              />
+                              <button
+                                onClick={() => handleSaveStaffNote(b.id)}
+                                className="px-2 py-1 bg-cyan-500 text-slate-950 rounded-lg font-bold text-[10px]"
+                              >
+                                บันทึก
+                              </button>
+                            </div>
+                          ) : (
+                            <div 
+                              onClick={() => { setEditingStaffNoteId(b.id); setStaffNoteDraft(b.staffNote || ""); }}
+                              className="cursor-pointer hover:text-cyan-300 group flex items-center gap-1"
+                              title="คลิกเพื่อแก้ไขหมายเหตุ"
+                            >
+                              <span className="truncate block text-slate-300 text-[11px]">
+                                {b.staffNote || <span className="text-slate-600 italic">เพิ่มหมายเหตุ...</span>}
+                              </span>
+                              <FileEdit size={12} className="opacity-0 group-hover:opacity-100 shrink-0 text-cyan-400" />
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Actions */}
+                        <td className="p-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => setSelectedBookingDetails(b)}
+                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg transition-all"
+                              title="ดูรายละเอียดทั้งหมด"
+                            >
+                              <Eye size={14} />
+                            </button>
+                            <button
+                              onClick={() => setConfirmDelete(b.id)}
+                              className="p-1.5 bg-red-950/40 hover:bg-red-600 text-red-400 hover:text-white rounded-lg transition-all"
+                              title="ลบคำขอจองนี้"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* DETAILS MODAL */}
+        {selectedBookingDetails && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#0e172e] rounded-3xl p-6 sm:p-8 max-w-2xl w-full border-2 border-cyan-500/40 shadow-2xl relative max-h-[85vh] overflow-y-auto">
+              <div className="flex justify-between items-start mb-4 pb-3 border-b border-cyan-500/20">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">รายละเอียดคำขอจอง</span>
+                  <h3 className="text-xl font-black text-white font-mono">
+                    {selectedBookingDetails.bookingRef || "PSP-XXXX"}
+                  </h3>
                 </div>
-             </div>
-             
-             <p className="text-center text-slate-500 text-xs font-bold py-2">
-                แสดงผลทั้งหมด {filteredBookings.length} รายการ
-             </p>
+                <button
+                  onClick={() => setSelectedBookingDetails(null)}
+                  className="p-1.5 text-slate-400 hover:text-white bg-slate-800 rounded-xl"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Information Grid */}
+              <div className="space-y-4 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl bg-slate-900">
+                    <span className="text-slate-400 block font-bold">ชื่อหน่วยงาน / โรงเรียน:</span>
+                    <span className="text-white font-black text-sm">{selectedBookingDetails.organizationName}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-900">
+                    <span className="text-slate-400 block font-bold">ประเภท:</span>
+                    <span className="text-white font-bold">{selectedBookingDetails.visitorType}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 rounded-xl bg-slate-900">
+                    <span className="text-slate-400 block font-bold">นักเรียน:</span>
+                    <span className="text-white font-mono font-bold text-base">{selectedBookingDetails.studentsCount || 0} คน</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-900">
+                    <span className="text-slate-400 block font-bold">ครู / ผู้ดูแล:</span>
+                    <span className="text-white font-mono font-bold text-base">{selectedBookingDetails.teachersCount || 0} คน</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-900">
+                    <span className="text-slate-400 block font-bold">ยอดรวมทั้งหมด:</span>
+                    <span className="text-emerald-400 font-mono font-black text-base">{selectedBookingDetails.totalAttendees || 0} คน</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl bg-slate-900">
+                    <span className="text-slate-400 block font-bold">ผู้ประสานงาน:</span>
+                    <span className="text-white font-bold">{selectedBookingDetails.contactName}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-900">
+                    <span className="text-slate-400 block font-bold">เบอร์โทรศัพท์:</span>
+                    <a href={`tel:${selectedBookingDetails.contactPhone}`} className="text-cyan-300 font-mono font-bold hover:underline">
+                      {selectedBookingDetails.contactPhone}
+                    </a>
+                  </div>
+                </div>
+
+                {selectedBookingDetails.notes && (
+                  <div className="p-3 rounded-xl bg-slate-900 border border-white/5">
+                    <span className="text-slate-400 block font-bold mb-1">หมายเหตุเพิ่มเติมจากผู้จอง:</span>
+                    <p className="text-slate-200 leading-relaxed">{selectedBookingDetails.notes}</p>
+                  </div>
+                )}
+
+                {/* Change Requests Section */}
+                {selectedBookingDetails.changeRequests && selectedBookingDetails.changeRequests.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-cyan-500/20">
+                    <h4 className="font-black text-amber-300 mb-2 flex items-center gap-1.5">
+                      <AlertTriangle size={14} /> ประวัติคำขอเปลี่ยนแปลง / ยกเลิก
+                    </h4>
+                    <div className="space-y-2">
+                      {selectedBookingDetails.changeRequests.map((req: any, idx: number) => (
+                        <div key={idx} className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="font-bold text-amber-200">
+                              ประเภท: {req.type === 'cancel' ? 'ขอยกเลิก' : req.type === 'change_date' ? `ขอเปลี่ยนวันเป็น ${req.newDate}` : 'ขอเปลี่ยนรอบ'}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              req.status === 'approved' ? 'bg-emerald-900 text-emerald-300' :
+                              req.status === 'rejected' ? 'bg-red-900 text-red-300' :
+                              'bg-amber-900 text-amber-300'
+                            }`}>
+                              {req.status === 'pending' ? 'รอตรวจสอบ' : req.status}
+                            </span>
+                          </div>
+                          <p className="text-slate-300 text-[11px] mb-2">เหตุผล: {req.reason}</p>
+                          {req.status === "pending" && (
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                onClick={() => handleApproveChangeRequest(selectedBookingDetails, idx)}
+                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-slate-950 rounded-lg font-black text-[10px]"
+                              >
+                                อนุมัติคำขอนี้
+                              </button>
+                              <button
+                                onClick={() => handleRejectChangeRequest(selectedBookingDetails, idx)}
+                                className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white rounded-lg font-black text-[10px]"
+                              >
+                                ปฏิเสธคำขอนี้
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-white/10 flex justify-end">
+                <button
+                  onClick={() => setSelectedBookingDetails(null)}
+                  className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all"
+                >
+                  ปิดหน้าต่าง
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* DELETE CONFIRMATION MODAL */}
+        {confirmDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+            <div className="bg-[#0e172e] rounded-3xl p-6 max-w-md w-full border border-red-500/30 text-center">
+              <Trash2 size={36} className="text-red-400 mx-auto mb-3" />
+              <h3 className="text-lg font-black text-white mb-2">ยืนยันการลบรายการจอง?</h3>
+              <p className="text-xs text-slate-300 mb-6">
+                การกระทำนี้ไม่สามารถย้อนกลับได้ ข้อมูลการจองจะถูกลบออกจากระบบอย่างถาวร
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmDelete(null)}
+                  className="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={() => handleDelete(confirmDelete)}
+                  disabled={isDeleting}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black"
+                >
+                  {isDeleting ? "กำลังลบ..." : "ยืนยันลบ"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </main>
-
-      {/* Confirmation Modal */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-           <div className="bg-[#0e172e] text-white w-full max-w-md rounded-3xl shadow-2xl p-8 border border-red-500/30 text-center animate-in zoom-in-95 duration-300">
-              <div className="w-16 h-16 bg-red-950/60 rounded-2xl flex items-center justify-center text-red-400 mx-auto mb-4 border border-red-500/30">
-                 <AlertTriangle size={32} />
-              </div>
-              <h2 className="text-xl font-black text-white mb-2">ยืนยันการลบรายการจอง?</h2>
-              <p className="text-slate-400 text-xs font-bold leading-relaxed mb-6">
-                ต้องการลบรายการจองของ <strong className="text-white">{bookings.find(b => b.id === confirmDelete)?.organizationName || bookings.find(b => b.id === confirmDelete)?.userName}</strong> ใช่หรือไม่?
-              </p>
-              
-              <div className="grid grid-cols-2 gap-3">
-                 <button 
-                   disabled={isDeleting}
-                   onClick={() => setConfirmDelete(null)}
-                   className="py-3 bg-slate-900 text-slate-400 rounded-xl font-black text-xs hover:bg-slate-800 transition-all"
-                 >
-                    ยกเลิก
-                 </button>
-                 <button 
-                   disabled={isDeleting}
-                   onClick={() => handleDelete(confirmDelete)}
-                   className="py-3 bg-red-600 text-white rounded-xl font-black text-xs hover:bg-red-700 transition-all flex items-center justify-center gap-2"
-                 >
-                    {isDeleting ? <Loader2 className="animate-spin" size={16} /> : "ยืนยันการลบ"}
-                 </button>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {/* Booking Detail Modal */}
-      {selectedBookingDetails && (
-        <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
-           <div className="bg-[#0e172e] text-white w-full max-w-md rounded-3xl shadow-2xl relative overflow-hidden border-2 border-cyan-500/30 flex flex-col max-h-[90vh]">
-              <header className="p-6 bg-gradient-to-br from-cyan-600 to-blue-700 text-white flex justify-between items-center shrink-0">
-                 <div>
-                    <h2 className="text-xl font-black">รายละเอียดการจอง</h2>
-                    <p className="text-cyan-200 text-[10px] font-bold uppercase tracking-wider">Phayao Science and Astronomy Park</p>
-                 </div>
-                 <button 
-                   onClick={() => setSelectedBookingDetails(null)}
-                   className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-all"
-                 >
-                   <X size={18} />
-                 </button>
-              </header>
-
-              <div className="p-6 space-y-4 overflow-y-auto">
-                 <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-slate-900 p-3 rounded-2xl border border-cyan-500/20">
-                       <p className="text-[10px] text-slate-400 font-bold uppercase">วันที่เข้าชม</p>
-                       <p className="text-sm font-black text-white mt-1">
-                          {format(selectedBookingDetails.start, 'd MMM yy', { locale: th })}
-                       </p>
-                    </div>
-                    <div className="bg-slate-900 p-3 rounded-2xl border border-cyan-500/20">
-                       <p className="text-[10px] text-slate-400 font-bold uppercase">ช่วงเวลา</p>
-                       <p className="text-sm font-black text-white mt-1">
-                          {format(selectedBookingDetails.start, 'HH:mm')} - {format(selectedBookingDetails.end, 'HH:mm')} น.
-                       </p>
-                    </div>
-                 </div>
-
-                 <div className="bg-slate-900 p-4 rounded-2xl border border-cyan-500/20 space-y-1.5">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">คณะ / สถานศึกษา</p>
-                    <p className="text-base font-black text-cyan-300">{selectedBookingDetails.organizationName || 'ไม่ได้ระบุ'}</p>
-                    <p className="text-xs text-slate-300 font-bold">ประเภท: {selectedBookingDetails.visitorType}</p>
-                    {selectedBookingDetails.gradeLevel && (
-                      <p className="text-xs text-slate-300 font-bold">ระดับชั้น: {selectedBookingDetails.gradeLevel}</p>
-                    )}
-                 </div>
-
-                 <div className="bg-slate-900 p-4 rounded-2xl border border-cyan-500/20 space-y-1.5">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">ผู้ประสานงาน / ผู้จอง</p>
-                    <p className="text-sm font-black text-white">{selectedBookingDetails.userName}</p>
-                    <p className="text-xs text-cyan-400 font-mono">รหัสสมาชิก: {selectedBookingDetails.memberId}</p>
-                    {selectedBookingDetails.userPhone && (
-                      <p className="text-xs text-slate-300 font-bold">เบอร์โทร: {selectedBookingDetails.userPhone}</p>
-                    )}
-                 </div>
-
-                 <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-slate-900 p-3 rounded-2xl border border-cyan-500/20">
-                       <p className="text-[10px] text-slate-400 font-bold">นักเรียน/ผู้เข้าชม</p>
-                       <p className="text-base font-black text-white">{selectedBookingDetails.studentsCount || selectedBookingDetails.totalAttendees || 1} คน</p>
-                    </div>
-                    <div className="bg-slate-900 p-3 rounded-2xl border border-cyan-500/20">
-                       <p className="text-[10px] text-slate-400 font-bold">ครู/ผู้ดูแล</p>
-                       <p className="text-base font-black text-white">{selectedBookingDetails.teachersCount || 0} คน</p>
-                    </div>
-                 </div>
-
-                 {selectedBookingDetails.interestedZones && selectedBookingDetails.interestedZones.length > 0 && (
-                   <div className="bg-slate-900 p-4 rounded-2xl border border-cyan-500/20 space-y-2">
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">โซนที่สนใจเป็นพิเศษ</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {selectedBookingDetails.interestedZones.map((z: string, i: number) => (
-                          <span key={i} className="text-[10px] font-bold bg-cyan-950 text-cyan-300 px-2.5 py-1 rounded-lg border border-cyan-500/30">
-                            {z}
-                          </span>
-                        ))}
-                      </div>
-                   </div>
-                 )}
-
-                 {selectedBookingDetails.notes && (
-                   <div className="bg-slate-900 p-4 rounded-2xl border border-cyan-500/20 space-y-1">
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">หมายเหตุเพิ่มเติม</p>
-                      <p className="text-xs text-slate-300 font-medium">{selectedBookingDetails.notes}</p>
-                   </div>
-                 )}
-
-                 <div className="pt-2 text-center text-[10px] text-slate-500 font-bold">
-                    บันทึกเมื่อ: {format(selectedBookingDetails.created, 'd MMM yyyy HH:mm น.', { locale: th })}
-                 </div>
-              </div>
-
-              <footer className="p-4 bg-slate-950 border-t border-cyan-500/15 shrink-0 flex gap-2">
-                 <button 
-                   onClick={() => handleStatusUpdate(selectedBookingDetails.id, 'confirmed')}
-                   className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs transition-all"
-                 >
-                   ยืนยันคิว
-                 </button>
-                 <button 
-                   onClick={() => handleStatusUpdate(selectedBookingDetails.id, 'completed')}
-                   className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs transition-all"
-                 >
-                   เสร็จสิ้น
-                 </button>
-                 <button 
-                   onClick={() => setSelectedBookingDetails(null)}
-                   className="px-4 py-2.5 bg-slate-900 text-slate-400 hover:text-white rounded-xl font-bold text-xs transition-all"
-                 >
-                   ปิด
-                 </button>
-              </footer>
-           </div>
-        </div>
-      )}
     </div>
   );
 }

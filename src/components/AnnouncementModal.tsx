@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { X, Megaphone, Sparkles, Telescope, CheckCircle2 } from "lucide-react";
+import { X, Sparkles, Telescope, CheckCircle2, Phone, CalendarCheck } from "lucide-react";
+import { SITE_CONFIG } from "@/lib/config";
+import FacebookIcon from "@/components/FacebookIcon";
+import Link from "next/link";
 
 export default function AnnouncementModal() {
   const [isOpen, setIsOpen] = useState(true);
@@ -45,20 +48,49 @@ export default function AnnouncementModal() {
             <p className="text-slate-300 font-medium text-sm leading-relaxed">
               อุทยานวิทยาศาสตร์และดาราศาสตร์ อบจ.พะเยา เปิดให้บริการวันอังคาร - วันอาทิตย์ (08:30 - 16:30 น.) 
               พร้อมรอบฉายโดมท้องฟ้าจำลอง 4K และนิทรรศการ 8 โซนเรียนรู้ 
-              สำหรับสถานศึกษา คณะศึกษาดูงาน และประชาชนทั่วไป สามารถจองรอบล่วงหน้าได้ผ่านระบบนี้
+              สำหรับสถานศึกษา คณะศึกษาดูงาน และประชาชนทั่วไป สามารถจองรอบได้ทันทีโดยไม่ต้องลงทะเบียนเข้าสู่ระบบ
             </p>
           </div>
 
-          <div className="text-center text-xs font-bold text-slate-400">
-            อุทยานวิทยาศาสตร์และดาราศาสตร์ องค์การบริหารส่วนจังหวัดพะเยา • โทร 054-480-194
+          {/* Contact Channels */}
+          <div className="bg-slate-900/90 border border-cyan-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <span className="text-slate-300 font-bold">ช่องทางติดต่อสอบถาม:</span>
+            <div className="flex items-center gap-2">
+              <a
+                href={SITE_CONFIG.facebookUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 hover:text-white rounded-xl font-bold border border-blue-500/30 transition-all text-xs"
+              >
+                <FacebookIcon className="w-3.5 h-3.5 fill-current" />
+                <span>Facebook</span>
+              </a>
+              <a
+                href={`tel:${SITE_CONFIG.phone}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 hover:text-white rounded-xl font-bold border border-cyan-500/30 transition-all text-xs"
+              >
+                <Phone size={13} className="text-cyan-400" />
+                <span>โทร {SITE_CONFIG.phone}</span>
+              </a>
+            </div>
           </div>
 
-          <button
-            onClick={() => setIsOpen(false)}
-            className="w-full py-4 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-cyan-500/20 hover:opacity-95 active:scale-95 transition-all"
-          >
-            เข้าสู่ระบบจอง
-          </button>
+          <div className="flex gap-3">
+            <Link
+              href="/book"
+              onClick={() => setIsOpen(false)}
+              className="flex-1 py-4 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-600 text-white rounded-2xl font-black text-center text-sm shadow-xl shadow-cyan-500/20 hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              <CalendarCheck size={18} />
+              <span>จองคิวเข้าชมออนไลน์</span>
+            </Link>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="px-6 py-4 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black text-sm transition-all"
+            >
+              ปิดหน้าต่าง
+            </button>
+          </div>
         </div>
 
       </div>

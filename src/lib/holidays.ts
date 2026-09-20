@@ -23,6 +23,14 @@ export const PUBLIC_HOLIDAYS = [
   "2026-12-31", // New Year's Eve
 ];
 
+export interface BlockedDateRecord {
+  id?: string;
+  date: string; // YYYY-MM-DD
+  reason: string;
+  createdAt?: any;
+  createdBy?: string;
+}
+
 /**
  * อุทยานวิทยาศาสตร์และดาราศาสตร์ อบจ.พะเยา
  * เปิดบริการ: วันอังคาร - วันอาทิตย์ (08:30 - 16:30 น.)
@@ -39,8 +47,24 @@ export const isOperationalDay = (date: Date): boolean => {
   return true;
 };
 
+/**
+ * ตรวจสอบว่าวันที่กำหนดถูกเจ้าหน้าที่ระงับ/งดรับจองหรือไม่
+ */
+export const isDateBlockedByAdmin = (date: Date, blockedDatesList: (string | BlockedDateRecord)[]): { blocked: boolean; reason?: string } => {
+  const dateStr = format(date, 'yyyy-MM-dd');
+  for (const item of blockedDatesList) {
+    if (typeof item === 'string' && item === dateStr) {
+      return { blocked: true, reason: 'งดรับจองเนื่องจากมีภารกิจพิเศษ' };
+    }
+    if (typeof item === 'object' && item.date === dateStr) {
+      return { blocked: true, reason: item.reason || 'งดรับจองเนื่องจากมีภารกิจพิเศษ' };
+    }
+  }
+  return { blocked: false };
+};
+
 export interface BookingSession {
-  id: string;
+  id: "morning" | "afternoon" | "fullday";
   name: string;
   startTime: string;
   endTime: string;
@@ -74,10 +98,10 @@ export const PARK_SESSIONS: BookingSession[] = [
   },
   {
     id: "fullday",
-    name: "รอบเต็มวัน (Full-Day Session)",
+    name: "รอบเหมาทั้งวัน (Full-Day Session)",
     startTime: "09:00",
     endTime: "16:00",
-    description: "กิจกรรมค่ายวิทยาศาสตร์ ทัศนศึกษาเต็มวัน รวมฐานปฏิบัติการแล็บ"
+    description: "กิจกรรมค่ายวิทยาศาสตร์ ทัศนศึกษาเต็มวัน รวมฐานปฏิบัติการแล็บ และท้องฟ้าจำลอง"
   }
 ];
 
@@ -99,7 +123,6 @@ export const getBookingConfig = (date: Date): BookingConfig => {
     closeHour: 16,
     closeMinute: 30,
     sessions: PARK_SESSIONS,
-    // เวลาเริ่มรอบที่เปิดให้เลือกได้
     slots: ["09:00", "10:00", "11:00", "13:00", "14:00", "15:00"]
   };
 };
