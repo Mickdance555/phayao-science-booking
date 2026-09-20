@@ -155,6 +155,21 @@ function BookingForm() {
     return () => unsubBlocked();
   }, []);
 
+  // Auto-select nearest available operational date if none selected
+  useEffect(() => {
+    if (selectedDates.length === 0) {
+      const todayStart = startOfDay(new Date());
+      for (let i = 1; i <= 30; i++) {
+        const candidate = addDays(todayStart, i);
+        if (isOperationalDay(candidate) && !isDateBlockedByAdmin(candidate, blockedDates).blocked) {
+          setSelectedDates([candidate]);
+          setCurrentMonth(candidate);
+          break;
+        }
+      }
+    }
+  }, [blockedDates, selectedDates.length]);
+
   // Total calculation (Automated: นักเรียน + ครู/ผู้ติดตาม)
   const totalAttendees = useMemo(() => {
     return Number(studentsCount || 0) + Number(teachersCount || 0);
@@ -363,7 +378,11 @@ function BookingForm() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error: any) {
       console.error("Booking error:", error);
-      alert("เกิดข้อผิดพลาดในการส่งคำขอจอง: " + (error.message || "กรุณาลองใหม่อีกครั้ง"));
+      if (error.code === "permission-denied" || error.message?.includes("permission") || error.message?.includes("PERMISSION_DENIED")) {
+        alert("เกิดข้อผิดพลาดด้านสิทธิ์ (Firebase Firestore Rules):\nระบบฐานข้อมูล Firebase Cloud ยังไม่ได้เปิดให้บุคคลทั่วไปบันทึกข้อมูล กรุณานำ rules ในไฟล์ firestore.rules ไปบันทึกที่ Firebase Console -> Firestore Database -> Rules");
+      } else {
+        alert("เกิดข้อผิดพลาดในการส่งคำขอจอง: " + (error.message || "กรุณาลองใหม่อีกครั้ง"));
+      }
     } finally {
       setIsSubmitting(false);
     }
