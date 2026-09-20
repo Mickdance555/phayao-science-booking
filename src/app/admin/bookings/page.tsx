@@ -390,8 +390,19 @@ export default function AdminBookingsPage() {
                         </td>
 
                         {/* Total Attendees */}
-                        <td className="p-4 text-center font-mono font-bold text-emerald-400 text-sm">
-                          {b.totalAttendees || b.studentsCount || 1}
+                        <td className="p-4 text-center">
+                          <span className="font-mono font-bold text-emerald-400 text-sm block">
+                            {b.totalAttendees || b.studentsCount || 1}
+                          </span>
+                          {(b.totalAttendees || 0) > 150 ? (
+                            <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-orange-950/80 border border-orange-500/40 text-orange-300 text-[9px] font-black">
+                              🔥 &gt;150 คน
+                            </span>
+                          ) : (b.totalAttendees || 0) >= 51 ? (
+                            <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[9px] font-black">
+                              ⚠️ 51-150 คน
+                            </span>
+                          ) : null}
                         </td>
 
                         {/* Contact */}
@@ -531,6 +542,31 @@ export default function AdminBookingsPage() {
                     <span className="text-emerald-400 font-mono font-black text-base">{selectedBookingDetails.totalAttendees || 0} คน</span>
                   </div>
                 </div>
+
+                {/* Large group screening alert for staff */}
+                {selectedBookingDetails.totalAttendees >= 51 && selectedBookingDetails.totalAttendees <= 150 && (
+                  <div className="p-3.5 rounded-xl bg-amber-950/60 border border-amber-500/40 text-amber-200 flex items-start gap-2.5">
+                    <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-amber-300 block">แจ้งเตือนเจ้าหน้าที่: คณะขนาดใหญ่ (51 - 150 คน)</span>
+                      <span className="text-slate-300 text-[11px] block mt-0.5">
+                        คณะมีจำนวนมากกว่า 50 คน เจ้าหน้าที่ควรตรวจสอบและโทรประสานความพร้อมก่อนยืนยัน
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {selectedBookingDetails.totalAttendees > 150 && (
+                  <div className="p-3.5 rounded-xl bg-orange-950/70 border border-orange-500/50 text-orange-200 flex items-start gap-2.5">
+                    <AlertTriangle size={18} className="text-orange-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-orange-300 block">แจ้งเตือนเจ้าหน้าที่: คณะขนาดใหญ่พิเศษ ({selectedBookingDetails.totalAttendees} คน)</span>
+                      <span className="text-slate-200 text-[11px] block mt-0.5">
+                        แนะนำให้เลือกเหมาทั้งวัน หากผู้จองเลือกแค่รอบเช้าหรือบ่าย เจ้าหน้าที่ควรโทรประสานและเสนอให้ปรับเป็นเหมาทั้งวัน เพื่อจัดแบ่งฐานการเรียนรู้ได้อย่างเหมาะสม
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 rounded-xl bg-slate-900">

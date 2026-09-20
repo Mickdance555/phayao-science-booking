@@ -324,8 +324,14 @@ function BookingForm() {
         officialDocUrl: docFileData ? docFileData.substring(0, 500000) : null, // Store if reasonable size
         
         // Status & Workflows
+        isLargeGroup: totalAttendees >= 51 && totalAttendees <= 150,
+        isExtraLargeGroup: totalAttendees > 150,
         status: "pending",
-        staffNote: "ได้รับคำขอจองแล้ว เจ้าหน้าที่กำลังตรวจสอบตารางความพร้อม",
+        staffNote: totalAttendees > 150 
+          ? `คณะขนาดใหญ่พิเศษ (${totalAttendees} คน) เจ้าหน้าที่จะประสานความพร้อมและการแบ่งกลุ่มฐานกิจกรรมก่อนยืนยัน`
+          : totalAttendees >= 51
+          ? `คณะมีจำนวนมากกว่า 50 คน (${totalAttendees} คน) เจ้าหน้าที่จะตรวจสอบและประสานความพร้อมก่อนยืนยัน`
+          : "ได้รับคำขอจองแล้ว เจ้าหน้าที่กำลังตรวจสอบตารางความพร้อม",
         changeRequests: [],
         createdAt: Timestamp.now()
       };
@@ -828,6 +834,60 @@ function BookingForm() {
                   {totalAttendees} <span className="text-base text-slate-300 font-sans">คน</span>
                 </div>
               </div>
+
+              {/* ระบบแจ้งเตือนตามจำนวนคน (คัดกรองคณะขนาดใหญ่) */}
+              {totalAttendees >= 51 && totalAttendees <= 150 && (
+                <div className="p-4 rounded-2xl bg-amber-950/60 border-2 border-amber-500/40 text-amber-200 text-xs flex items-start gap-3 animate-in fade-in duration-300">
+                  <AlertTriangle size={20} className="text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-black text-amber-300 text-sm">แจ้งเตือน: คณะขนาดใหญ่ (51 - 150 คน)</p>
+                    <p className="mt-0.5 text-slate-300 leading-relaxed font-medium">
+                      คณะมีจำนวนมากกว่า 50 คน เจ้าหน้าที่จะตรวจสอบและประสานความพร้อมก่อนยืนยัน
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {totalAttendees > 150 && (
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-950/90 via-orange-950/80 to-slate-900 border-2 border-amber-500/50 text-amber-200 text-xs space-y-3 animate-in fade-in duration-300 shadow-xl">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle size={22} className="text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-black text-amber-300 text-sm">
+                        แจ้งเตือน: คณะขนาดใหญ่พิเศษ ({totalAttendees} คน)
+                      </p>
+                      <p className="mt-0.5 text-slate-200 leading-relaxed font-medium">
+                        คณะมีจำนวนมากกว่า 150 คน <strong className="text-amber-300 font-black">แนะนำให้เลือกเหมาทั้งวัน</strong> เพื่อให้วิทยากรสามารถจัดแบ่งกลุ่มฐานการเรียนรู้และรอบฉายโดมท้องฟ้าจำลองได้อย่างทั่วถึง
+                      </p>
+                    </div>
+                  </div>
+
+                  {sessionType !== "fullday" && (
+                    <div className="pt-2 border-t border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <span className="text-slate-300 text-[11px] font-bold">
+                        ปัจจุบันเลือก: <span className="text-cyan-300">{sessionType === 'morning' ? 'รอบเช้า (09:00 - 12:00 น.)' : 'รอบบ่าย (13:00 - 16:00 น.)'}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleSessionChange("fullday");
+                        }}
+                        className="px-4 py-2 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-950/40 transition-all flex items-center justify-center gap-1.5 active:scale-95 shrink-0"
+                      >
+                        <Clock size={14} />
+                        <span>เปลี่ยนเป็นเหมาทั้งวัน</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {sessionType === "fullday" && (
+                    <div className="pt-1 text-[11px] text-emerald-400 font-bold flex items-center gap-1.5">
+                      <CheckCircle2 size={14} />
+                      <span>ท่านเลือก "รอบเหมาทั้งวัน (09:00 - 16:00 น.)" เหมาะสมสำหรับคณะขนาดใหญ่เรียบร้อยแล้ว</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
