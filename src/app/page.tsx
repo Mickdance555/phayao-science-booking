@@ -382,12 +382,13 @@ export default function LandingPage() {
                   const isPastOrOver = isBefore(dayStart, today) || isAfter(dayStart, maxDate);
                   const blockInfo = isDateBlockedByAdmin(dayStart, blockedDates);
 
-                  // Evaluate session bookings
+                  // Evaluate session bookings & blocked status
                   const hasFullday = currentDayBookings.some((b: any) => b.sessionType === 'fullday');
                   const hasMorning = currentDayBookings.some((b: any) => b.sessionType === 'morning');
                   const hasAfternoon = currentDayBookings.some((b: any) => b.sessionType === 'afternoon');
                   const isFull = hasFullday || (hasMorning && hasAfternoon);
                   const hasSomeBookings = currentDayBookings.length > 0;
+                  const hasPartialBlock = !blockInfo.blocked && (blockInfo.blockedMorning || blockInfo.blockedAfternoon);
 
                   const isClickable = isCurrentMonthDay && isOp && !isPastOrOver;
 
@@ -399,8 +400,9 @@ export default function LandingPage() {
                         !isCurrentMonthDay ? 'opacity-20 pointer-events-none' :
                         !isOp ? 'bg-slate-950/60 cursor-not-allowed' :
                         isPastOrOver ? 'opacity-30 cursor-not-allowed bg-slate-950/40' :
-                        blockInfo.blocked ? 'bg-red-950/20 hover:bg-red-950/40 cursor-pointer border-red-500/30' :
+                        blockInfo.blocked ? 'bg-red-950/25 hover:bg-red-950/40 cursor-pointer border-red-500/30' :
                         isFull ? 'bg-red-950/15 hover:bg-red-950/30 cursor-pointer' :
+                        hasPartialBlock ? 'bg-amber-950/20 hover:bg-amber-950/35 cursor-pointer border-amber-500/25' :
                         hasSomeBookings ? 'bg-amber-950/15 hover:bg-amber-950/30 cursor-pointer' :
                         'hover:bg-cyan-950/30 cursor-pointer group'
                       }`}
@@ -410,6 +412,7 @@ export default function LandingPage() {
                           isToday ? 'bg-gradient-to-tr from-cyan-500 to-blue-600 text-slate-950 shadow-md shadow-cyan-500/50' : 
                           !isOp ? 'text-slate-600' : 
                           blockInfo.blocked ? 'text-red-400 font-bold' :
+                          hasPartialBlock ? 'text-amber-400 font-bold' :
                           'text-slate-200 group-hover:text-cyan-300'
                         }`}>
                           {format(day, 'd')}
@@ -429,7 +432,16 @@ export default function LandingPage() {
                           </div>
                         ) : blockInfo.blocked ? (
                           <div className="text-[10px] font-bold text-red-300 bg-red-950/80 px-1.5 py-0.5 rounded-lg border border-red-500/30 text-center truncate" title={blockInfo.reason}>
-                            🚫 งดรับจอง
+                            🚫 งดรับจองทั้งวัน
+                          </div>
+                        ) : hasPartialBlock ? (
+                          <div className="space-y-0.5">
+                            <div className="text-[9px] font-bold text-amber-300 bg-amber-950/80 px-1.5 py-0.5 rounded-lg border border-amber-500/30 text-center truncate" title={blockInfo.reason}>
+                              ⚠️ {blockInfo.blockedMorning ? "ปิดรอบเช้า" : "ปิดรอบบ่าย"}
+                            </div>
+                            <div className="text-[9px] font-bold text-emerald-400 text-center">
+                              {blockInfo.blockedMorning ? "บ่ายว่าง" : "เช้าว่าง"}
+                            </div>
                           </div>
                         ) : isFull ? (
                           <div className="text-[10px] font-bold text-red-300 bg-red-950/80 px-1.5 py-0.5 rounded-lg border border-red-500/30 text-center">
@@ -575,23 +587,40 @@ export default function LandingPage() {
                    const dayBookings = getDayBookings(selectedDate);
                    const formattedDateParam = format(selectedDate, 'yyyy-MM-dd');
 
-                   return PARK_SESSIONS.map((sess) => {
-                     // Check if this session is booked by a confirmed booking
-                     const bookedItem = dayBookings.find((b: any) => {
-                       return b.sessionType === sess.id || b.sessionType === 'fullday';
-                     });
+                    return PARK_SESSIONS.map((sess) => {
+                      // Check if this specific session is blocked by admin
+                      let isSessionBlockedByAdmin = false;
+                      let sessionBlockReason = "";
 
-                     const isBooked = !!bookedItem;
+                      if (sess.id === "morning" && block.blockedMorning) {
+                        isSessionBlockedByAdmin = true;
+                        sessionBlockReason = block.morningReason || block.reason || "งดรับจองรอบเช้า";
+                      } else if (sess.id === "afternoon" && block.blockedAfternoon) {
+                        isSessionBlockedByAdmin = true;
+                        sessionBlockReason = block.afternoonReason || block.reason || "งดรับจองรอบบ่าย";
+                      } else if (sess.id === "fullday" && block.blockedFullday) {
+                        isSessionBlockedByAdmin = true;
+                        sessionBlockReason = block.reason || "งดรับจองรอบเหมาวันเนื่องจากมีบางรอบปิดบริการ";
+                      }
 
-                     return (
-                       <div key={sess.id} className={`p-5 rounded-3xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                         isBooked 
-                           ? "bg-slate-900/90 border-amber-500/30" 
-                           : "bg-slate-900 border-cyan-500/20 hover:border-cyan-400/50"
-                       }`}>
+                      // Check if this session is booked by a confirmed booking
+                      const bookedItem = dayBookings.find((b: any) => {
+                        return b.sessionType === sess.id || b.sessionType === "fullday";
+                      });
+
+                      const isBooked = !!bookedItem;
+
+                      return (
+                        <div key={sess.id} className={`p-5 rounded-3xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                          isSessionBlockedByAdmin
+                            ? "bg-red-950/20 border-red-500/30"
+                            : isBooked
+                            ? "bg-slate-900/90 border-amber-500/30"
+                            : "bg-slate-900 border-cyan-500/20 hover:border-cyan-400/50"
+                        }`}>
                           <div className="flex-1">
                              <div className="flex items-center gap-2">
-                               <Clock size={16} className="text-cyan-400" />
+                               <Clock size={16} className={isSessionBlockedByAdmin ? "text-red-400" : "text-cyan-400"} />
                                <h4 className="font-black text-white text-base">{sess.name}</h4>
                              </div>
                              <p className="text-xs text-slate-400 font-medium mt-1">{sess.description}</p>
@@ -600,7 +629,11 @@ export default function LandingPage() {
                                <span className="text-[11px] font-bold text-cyan-300 bg-cyan-950/80 px-2.5 py-0.5 rounded-full border border-cyan-500/30">
                                  เวลา {sess.startTime} - {sess.endTime} น.
                                </span>
-                               {isBooked ? (
+                               {isSessionBlockedByAdmin ? (
+                                 <span className="text-[11px] font-bold text-red-300 bg-red-950/80 px-2.5 py-0.5 rounded-full border border-red-500/40">
+                                   🚫 งดรับจองรอบนี้
+                                 </span>
+                               ) : isBooked ? (
                                  <span className="text-[11px] font-bold text-amber-300 bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                                    จองแล้ว
                                  </span>
@@ -611,8 +644,16 @@ export default function LandingPage() {
                                )}
                              </div>
 
+                             {/* Blocked reason banner */}
+                             {isSessionBlockedByAdmin && (
+                               <div className="mt-3 p-2.5 bg-red-950/50 rounded-xl border border-red-500/30 text-xs">
+                                 <span className="text-red-400 font-bold block text-[10px]">เหตุผลที่งดรับจอง:</span>
+                                 <span className="text-red-200 font-medium">{sessionBlockReason}</span>
+                               </div>
+                             )}
+
                              {/* Public School/Organization Display for Confirmed Bookings */}
-                             {isBooked && (
+                             {!isSessionBlockedByAdmin && isBooked && (
                                <div className="mt-3 p-2.5 bg-amber-950/40 rounded-xl border border-amber-500/20 text-xs">
                                  <span className="text-slate-400 block text-[10px] font-bold">คณะที่ได้รับอนุญาตให้เข้าชม:</span>
                                  <span className="text-amber-200 font-black">
@@ -625,8 +666,8 @@ export default function LandingPage() {
                              )}
                           </div>
 
-                          {!isBooked && (
-                            <Link 
+                          {!isSessionBlockedByAdmin && !isBooked && (
+                            <Link
                               href={`/book?date=${formattedDateParam}&session=${sess.id}`}
                               className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 rounded-xl font-black text-xs hover:brightness-110 active:scale-95 transition-all shadow-lg shrink-0 text-center flex items-center justify-center gap-1.5"
                             >
@@ -634,9 +675,9 @@ export default function LandingPage() {
                               <ArrowRight size={14} />
                             </Link>
                           )}
-                       </div>
-                     );
-                   });
+                        </div>
+                      );
+                    });
                  })()}
               </div>
 

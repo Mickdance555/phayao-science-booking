@@ -1,4 +1,4 @@
-import { format, getDay } from "date-fns";
+import { format, getDay, parseISO, isWithinInterval, startOfDay } from "date-fns";
 
 export const PUBLIC_HOLIDAYS = [
   "2026-01-01", // New Year's Day
@@ -23,12 +23,39 @@ export const PUBLIC_HOLIDAYS = [
   "2026-12-31", // New Year's Eve
 ];
 
+export type BlockScope = "all" | "morning" | "afternoon";
+export type BlockReasonType = "official_holiday" | "maintenance" | "internal_activity" | "other";
+
+export const REASON_TYPE_LABELS: Record<BlockReasonType, string> = {
+  official_holiday: "วันหยุดราชการ",
+  maintenance: "ปิดปรับปรุง",
+  internal_activity: "มีกิจกรรมภายใน",
+  other: "เหตุผลอื่นๆ"
+};
+
 export interface BlockedDateRecord {
   id?: string;
-  date: string; // YYYY-MM-DD
+  date?: string; // YYYY-MM-DD
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+  dates?: string[]; // YYYY-MM-DD array
+  scope?: BlockScope; // "all" | "morning" | "afternoon"
+  reasonType?: BlockReasonType;
   reason: string;
   createdAt?: any;
   createdBy?: string;
+}
+
+export interface DayBlockStatus {
+  blocked: boolean; // ปิดทั้งวัน หรือทั้งเช้าและบ่ายถูกปิด
+  blockedMorning: boolean; // ปิดรอบเช้า
+  blockedAfternoon: boolean; // ปิดรอบบ่าย
+  blockedFullday: boolean; // ปิดรอบเหมาวัน (ถ้าเช้าหรือบ่ายปิดอย่างใดอย่างหนึ่ง ก็เหมาทั้งวันไม่ได้)
+  reasons: string[];
+  reason?: string; // เหตุผลหลักสำหรับแสดงผลย่อ
+  morningReason?: string;
+  afternoonReason?: string;
+  allDayReason?: string;
 }
 
 /**
@@ -49,18 +76,97 @@ export const isOperationalDay = (date: Date): boolean => {
 
 /**
  * ตรวจสอบว่าวันที่กำหนดถูกเจ้าหน้าที่ระงับ/งดรับจองหรือไม่
+ * รองรับการปิด: รอบเช้า, รอบบ่าย, ทั้งวัน, และช่วงหลายวัน
  */
-export const isDateBlockedByAdmin = (date: Date, blockedDatesList: (string | BlockedDateRecord)[]): { blocked: boolean; reason?: string } => {
+export const isDateBlockedByAdmin = (
+  date: Date,
+  blockedDatesList: (string | BlockedDateRecord)[]
+): DayBlockStatus => {
   const dateStr = format(date, 'yyyy-MM-dd');
+  const targetTime = startOfDay(date).getTime();
+
+  let blockedMorning = false;
+  let blockedAfternoon = false;
+  let allDayBlocked = false;
+  const reasons: string[] = [];
+  let morningReason = "";
+  let afternoonReason = "";
+  let allDayReason = "";
+
   for (const item of blockedDatesList) {
-    if (typeof item === 'string' && item === dateStr) {
-      return { blocked: true, reason: 'งดรับจองเนื่องจากมีภารกิจพิเศษ' };
+    if (!item) continue;
+
+    // รองรับกรณี legacy string ("2026-04-10")
+    if (typeof item === 'string') {
+      if (item === dateStr) {
+        allDayBlocked = true;
+        blockedMorning = true;
+        blockedAfternoon = true;
+        reasons.push("งดรับจองเนื่องจากมีภารกิจพิเศษ");
+        allDayReason = "งดรับจองเนื่องจากมีภารกิจพิเศษ";
+      }
+      continue;
     }
-    if (typeof item === 'object' && item.date === dateStr) {
-      return { blocked: true, reason: item.reason || 'งดรับจองเนื่องจากมีภารกิจพิเศษ' };
+
+    // ตรวจสอบว่าวันที่ตรงกับ record นี้หรือไม่
+    let isDateMatch = false;
+
+    if (item.date && item.date === dateStr) {
+      isDateMatch = true;
+    } else if (Array.isArray(item.dates) && item.dates.includes(dateStr)) {
+      isDateMatch = true;
+    } else if (item.startDate && item.endDate) {
+      try {
+        const start = startOfDay(parseISO(item.startDate)).getTime();
+        const end = startOfDay(parseISO(item.endDate)).getTime();
+        if (targetTime >= start && targetTime <= end) {
+          isDateMatch = true;
+        }
+      } catch (e) {
+        // ignore parse error
+      }
+    }
+
+    if (!isDateMatch) continue;
+
+    const rText = item.reason || (item.reasonType ? REASON_TYPE_LABELS[item.reasonType] : "งดรับจองเนื่องจากมีภารกิจพิเศษ");
+    const scope: BlockScope = item.scope || "all";
+
+    if (scope === "all") {
+      allDayBlocked = true;
+      blockedMorning = true;
+      blockedAfternoon = true;
+      if (!reasons.includes(rText)) reasons.push(rText);
+      allDayReason = rText;
+    } else if (scope === "morning") {
+      blockedMorning = true;
+      morningReason = rText;
+      if (!reasons.includes(`รอบเช้า: ${rText}`)) reasons.push(`รอบเช้า: ${rText}`);
+    } else if (scope === "afternoon") {
+      blockedAfternoon = true;
+      afternoonReason = rText;
+      if (!reasons.includes(`รอบบ่าย: ${rText}`)) reasons.push(`รอบบ่าย: ${rText}`);
     }
   }
-  return { blocked: false };
+
+  const fullyBlocked = allDayBlocked || (blockedMorning && blockedAfternoon);
+  const fulldayBlocked = fullyBlocked || blockedMorning || blockedAfternoon;
+
+  const combinedReason = reasons.length > 0 
+    ? reasons.join(" / ") 
+    : undefined;
+
+  return {
+    blocked: fullyBlocked,
+    blockedMorning,
+    blockedAfternoon,
+    blockedFullday: fulldayBlocked,
+    reasons,
+    reason: combinedReason,
+    morningReason: morningReason || allDayReason,
+    afternoonReason: afternoonReason || allDayReason,
+    allDayReason: allDayReason || combinedReason
+  };
 };
 
 export interface BookingSession {

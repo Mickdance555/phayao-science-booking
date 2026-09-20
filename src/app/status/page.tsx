@@ -22,7 +22,12 @@ import {
   CalendarCheck,
   Building2,
   RefreshCw,
-  HelpCircle
+  HelpCircle,
+  FileEdit,
+  UserCheck,
+  ClipboardCheck,
+  ArrowRight,
+  Star
 } from "lucide-react";
 import { collection, query, where, getDocs, doc, updateDoc, Timestamp, arrayUnion } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -31,6 +36,42 @@ import { differenceInDays, parseISO, startOfDay } from "date-fns";
 import { PARK_SESSIONS } from "@/lib/holidays";
 import Link from "next/link";
 import FacebookIcon from "@/components/FacebookIcon";
+
+// ─── Booking Status Definitions ─────────────────────────────────────────────
+const BOOKING_STATUSES = {
+  draft: { label: "ร่างรายการ", shortLabel: "ร่าง", color: "slate", icon: FileEdit, step: 0 },
+  pending_review: { label: "รอตรวจสอบ", shortLabel: "รอตรวจสอบ", color: "yellow", icon: Clock, step: 1 },
+  coordinating: { label: "รอประสานวิทยากร", shortLabel: "ประสาน", color: "purple", icon: UserCheck, step: 2 },
+  confirmed: { label: "ยืนยันแล้ว", shortLabel: "ยืนยัน", color: "emerald", icon: CheckCircle2, step: 3 },
+  completed: { label: "เสร็จสิ้นการเข้าเยี่ยมชม", shortLabel: "เสร็จสิ้น", color: "cyan", icon: ClipboardCheck, step: 4 },
+  // Branch statuses
+  change_requested: { label: "ขอเปลี่ยนแปลง", shortLabel: "ขอเปลี่ยน", color: "blue", icon: RefreshCw, step: -1 },
+  cancelled: { label: "ยกเลิกแล้ว", shortLabel: "ยกเลิก", color: "red", icon: XCircle, step: -1 },
+  // Legacy mapping
+  pending: { label: "รอตรวจสอบ", shortLabel: "รอตรวจสอบ", color: "yellow", icon: Clock, step: 1 },
+  approved: { label: "ยืนยันแล้ว", shortLabel: "ยืนยัน", color: "emerald", icon: CheckCircle2, step: 3 },
+  rejected: { label: "ไม่อนุมัติ", shortLabel: "ไม่อนุมัติ", color: "red", icon: XCircle, step: -1 },
+  "checked-in": { label: "เสร็จสิ้นการเข้าเยี่ยมชม", shortLabel: "เสร็จสิ้น", color: "cyan", icon: ClipboardCheck, step: 4 },
+} as const;
+
+type BookingStatusKey = keyof typeof BOOKING_STATUSES;
+
+const WORKFLOW_STEPS = [
+  { key: "draft", label: "ร่างรายการ", icon: FileEdit },
+  { key: "pending_review", label: "รอตรวจสอบ", icon: Clock },
+  { key: "coordinating", label: "รอประสานวิทยากร", icon: UserCheck },
+  { key: "confirmed", label: "ยืนยันแล้ว", icon: CheckCircle2 },
+  { key: "completed", label: "เสร็จสิ้น", icon: ClipboardCheck },
+];
+
+function getSessionLabel(sessionType: string): string {
+  switch (sessionType) {
+    case "morning": return "รอบเช้า (09:00 - 12:00 น.)";
+    case "afternoon": return "รอบบ่าย (13:00 - 16:00 น.)";
+    case "fullday": return "เหมาทั้งวัน (09:00 - 16:00 น.)";
+    default: return sessionType || "-";
+  }
+}
 
 function StatusSearchForm() {
   const searchParams = useSearchParams();
@@ -76,7 +117,6 @@ function StatusSearchForm() {
     setBookingData(null);
 
     try {
-      // Query bookings collection matching bookingRef
       const q = query(
         collection(db, "bookings"),
         where("bookingRef", "==", cleanRef)
@@ -161,7 +201,7 @@ function StatusSearchForm() {
 
       await updateDoc(bookingRefDoc, {
         changeRequests: arrayUnion(newRequestObj),
-        // If it's cancellation and more than 7 days, or mark as request
+        status: activeModal === "cancel" ? "cancelled" : "change_requested",
         hasPendingChangeRequest: true,
         staffNote: isUnder7Days 
           ? `มีคำขอ${activeModal === 'cancel' ? 'ยกเลิก' : 'เปลี่ยนแปลง'} (เหลือน้อยกว่า 7 วัน อยู่ระหว่างเจ้าหน้าที่พิจารณาเหตุผล)` 
@@ -186,42 +226,107 @@ function StatusSearchForm() {
     }
   };
 
-  // Status badge styling
-  const renderStatusBadge = (status: string) => {
-    switch (status) {
-      case "confirmed":
-      case "approved":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-500/40 text-xs font-black">
-            <CheckCircle2 size={16} /> อนุมัติการเข้าชมแล้ว (Confirmed)
-          </span>
-        );
-      case "rejected":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-red-950/80 text-red-400 border border-red-500/40 text-xs font-black">
-            <XCircle size={16} /> ไม่อนุมัติ / ยกเลิกโดยเจ้าหน้าที่
-          </span>
-        );
-      case "cancelled":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-xs font-black">
-            <XCircle size={16} /> ยกเลิกการจองแล้ว (Cancelled)
-          </span>
-        );
-      case "checked-in":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 text-xs font-black">
-            <CheckCircle2 size={16} /> เข้าชมเรียบร้อยแล้ว (Completed)
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-yellow-950/80 text-yellow-300 border border-yellow-500/40 text-xs font-black">
-            <Clock size={16} className="animate-spin" /> รอการตรวจสอบจากเจ้าหน้าที่ (Pending)
-          </span>
-        );
-    }
+  // ─── Workflow Stepper Component ─────────────────────────────────────────────
+  const renderWorkflowStepper = (status: string) => {
+    const statusInfo = BOOKING_STATUSES[status as BookingStatusKey] || BOOKING_STATUSES.pending_review;
+    const currentStep = statusInfo.step;
+    const isBranch = currentStep === -1; // change_requested or cancelled
+
+    return (
+      <div className="space-y-4">
+        {/* Main workflow steps */}
+        <div className="flex items-center justify-between gap-1 sm:gap-2 overflow-x-auto pb-2">
+          {WORKFLOW_STEPS.map((step, index) => {
+            const stepNum = index;
+            const isActive = !isBranch && currentStep === stepNum;
+            const isDone = !isBranch && currentStep > stepNum;
+            const isFuture = isBranch || currentStep < stepNum;
+            const StepIcon = step.icon;
+
+            return (
+              <div key={step.key} className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0">
+                <div className="flex flex-col items-center gap-1.5 min-w-0 flex-shrink-0">
+                  <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center border-2 transition-all ${
+                    isActive 
+                      ? "bg-cyan-500 border-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/40 scale-110"
+                      : isDone
+                      ? "bg-emerald-500/20 border-emerald-500/60 text-emerald-400"
+                      : "bg-slate-900 border-slate-700 text-slate-500"
+                  }`}>
+                    {isDone ? <CheckCircle2 size={16} /> : <StepIcon size={16} />}
+                  </div>
+                  <span className={`text-[9px] sm:text-[10px] font-bold text-center leading-tight max-w-[60px] sm:max-w-[80px] ${
+                    isActive ? "text-cyan-300" : isDone ? "text-emerald-400" : "text-slate-500"
+                  }`}>
+                    {step.label}
+                  </span>
+                </div>
+                {index < WORKFLOW_STEPS.length - 1 && (
+                  <div className={`h-0.5 flex-1 min-w-[8px] rounded-full mt-[-18px] ${
+                    isDone ? "bg-emerald-500/50" : "bg-slate-800"
+                  }`} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Branch status indicator */}
+        {isBranch && (
+          <div className={`flex items-center gap-2 p-3 rounded-xl border ${
+            status === "cancelled" 
+              ? "bg-red-950/40 border-red-500/40" 
+              : status === "change_requested"
+              ? "bg-blue-950/40 border-blue-500/40"
+              : "bg-red-950/40 border-red-500/40"
+          }`}>
+            {status === "cancelled" && <XCircle size={18} className="text-red-400" />}
+            {status === "change_requested" && <RefreshCw size={18} className="text-blue-400" />}
+            {status === "rejected" && <XCircle size={18} className="text-red-400" />}
+            <div>
+              <span className={`font-black text-sm ${
+                status === "cancelled" ? "text-red-300" : 
+                status === "change_requested" ? "text-blue-300" : "text-red-300"
+              }`}>
+                {statusInfo.label}
+              </span>
+              <span className="text-[11px] text-slate-400 block">
+                {status === "cancelled" && "การจองถูกยกเลิกตามคำขอของผู้จอง"}
+                {status === "change_requested" && "ผู้จองขอเปลี่ยนแปลงข้อมูล รอเจ้าหน้าที่ดำเนินการ"}
+                {status === "rejected" && "ไม่อนุมัติการจอง กรุณาติดต่อเจ้าหน้าที่"}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
+
+  // ─── Status Badge ─────────────────────────────────────────────────────────
+  const renderStatusBadge = (status: string) => {
+    const statusInfo = BOOKING_STATUSES[status as BookingStatusKey] || BOOKING_STATUSES.pending_review;
+    const StatusIcon = statusInfo.icon;
+
+    const colorMap: Record<string, string> = {
+      slate: "bg-slate-800 text-slate-300 border-slate-700",
+      yellow: "bg-yellow-950/80 text-yellow-300 border-yellow-500/40",
+      purple: "bg-purple-950/80 text-purple-300 border-purple-500/40",
+      emerald: "bg-emerald-950/80 text-emerald-400 border-emerald-500/40",
+      cyan: "bg-cyan-950/80 text-cyan-300 border-cyan-500/40",
+      blue: "bg-blue-950/80 text-blue-300 border-blue-500/40",
+      red: "bg-red-950/80 text-red-400 border-red-500/40",
+    };
+
+    return (
+      <span className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full border text-xs font-black ${colorMap[statusInfo.color] || colorMap.yellow}`}>
+        <StatusIcon size={16} />
+        {statusInfo.label}
+      </span>
+    );
+  };
+
+  // Check if status allows change/cancel
+  const canRequestChange = bookingData && !["cancelled", "completed", "checked-in", "rejected"].includes(bookingData.status);
 
   return (
     <div className="min-h-screen bg-[#070b16] text-white flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
@@ -237,7 +342,7 @@ function StatusSearchForm() {
             ตรวจสอบสถานะการจอง
           </h1>
           <p className="text-slate-400 font-medium text-xs sm:text-sm">
-            กรอกเลขที่การจอง (Booking Ref) และเบอร์โทรศัพท์ เพื่อดูผลการอนุมัติ หมายเหตุ หรือส่งคำขอเปลี่ยนแปลง
+            กรอกเลขที่การจอง (Booking Ref) และเบอร์โทรศัพท์ เพื่อดูสถานะล่าสุดและส่งคำขอเปลี่ยนแปลง
           </p>
         </div>
 
@@ -295,8 +400,19 @@ function StatusSearchForm() {
         {/* BOOKING DETAILS CARD */}
         {bookingData && (
           <div className="space-y-6 animate-in slide-in-from-bottom-6 duration-500">
+
+            {/* Workflow Stepper */}
+            <div className="bg-[#0e172e] rounded-[2.5rem] p-6 sm:p-8 border-2 border-cyan-500/20 shadow-2xl">
+              <div className="flex items-center gap-2 mb-5">
+                <span className="text-[11px] font-black uppercase tracking-widest text-cyan-400">
+                  สถานะการดำเนินการ
+                </span>
+              </div>
+              {renderWorkflowStepper(bookingData.status)}
+            </div>
+
             {/* 7-Days Warning Notice if applicable */}
-            {isUnder7Days && (
+            {isUnder7Days && canRequestChange && (
               <div className="p-5 rounded-3xl bg-amber-950/60 border-2 border-amber-500/40 shadow-xl flex items-start gap-3">
                 <AlertTriangle size={22} className="text-amber-400 shrink-0 mt-0.5" />
                 <div>
@@ -339,38 +455,44 @@ function StatusSearchForm() {
                 </div>
               )}
 
-              {/* Info Grid */}
+              {/* Info Grid — ข้อมูลหลักที่แสดง */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-2 text-xs">
+                {/* หน่วยงาน */}
                 <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
-                  <span className="text-slate-400 font-bold block mb-1">โรงเรียน / หน่วยงาน</span>
+                  <span className="text-slate-400 font-bold block mb-1 flex items-center gap-1.5">
+                    <Building2 size={12} className="text-cyan-400" /> หน่วยงาน
+                  </span>
                   <span className="text-white font-black text-sm">{bookingData.organizationName}</span>
                   {bookingData.districtProvince && (
                     <span className="text-cyan-300 text-xs block mt-0.5">📍 {bookingData.districtProvince}</span>
                   )}
                 </div>
 
+                {/* วันที่เข้าชม */}
                 <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
-                  <span className="text-slate-400 font-bold block mb-1">วันที่เข้าชม</span>
+                  <span className="text-slate-400 font-bold block mb-1 flex items-center gap-1.5">
+                    <CalendarIcon size={12} className="text-cyan-400" /> วันที่เข้าชม
+                  </span>
                   <span className="text-cyan-300 font-black text-sm">
                     {Array.isArray(bookingData.dates) ? bookingData.dates.join(", ") : "ตามที่ระบุ"}
                   </span>
                 </div>
 
+                {/* รอบเวลา */}
                 <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
-                  <span className="text-slate-400 font-bold block mb-1">รอบเวลา</span>
+                  <span className="text-slate-400 font-bold block mb-1 flex items-center gap-1.5">
+                    <Clock size={12} className="text-cyan-400" /> รอบเวลา
+                  </span>
                   <span className="text-white font-black text-sm">
-                    {bookingData.sessionTitle || "รอบเข้าชม"} 
-                    {bookingData.sessionTimeRange && ` (${bookingData.sessionTimeRange})`}
+                    {getSessionLabel(bookingData.sessionType)}
                   </span>
                 </div>
 
+                {/* จำนวนผู้เข้าชม */}
                 <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
-                  <span className="text-slate-400 font-bold block mb-1">ระดับชั้น</span>
-                  <span className="text-white font-bold text-sm">{bookingData.gradeLevel || "-"}</span>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
-                  <span className="text-slate-400 font-bold block mb-1">จำนวนผู้เข้าชมรวม</span>
+                  <span className="text-slate-400 font-bold block mb-1 flex items-center gap-1.5">
+                    <Users size={12} className="text-cyan-400" /> จำนวนผู้เข้าชม
+                  </span>
                   <span className="text-emerald-400 font-black text-base">
                     {bookingData.totalAttendees || 0} คน
                   </span>
@@ -379,51 +501,28 @@ function StatusSearchForm() {
                   </span>
                 </div>
 
+                {/* สถานะ */}
                 <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
-                  <span className="text-slate-400 font-bold block mb-1">ผู้ประสานงาน</span>
-                  <span className="text-white font-bold text-sm">{bookingData.contactName}</span>
-                  <span className="text-slate-400 text-xs block font-mono">{bookingData.contactPhone}</span>
-                  {bookingData.contactEmail && (
-                    <span className="text-slate-500 text-[11px] block">{bookingData.contactEmail}</span>
-                  )}
+                  <span className="text-slate-400 font-bold block mb-1 flex items-center gap-1.5">
+                    <CheckCircle2 size={12} className="text-cyan-400" /> สถานะปัจจุบัน
+                  </span>
+                  <span className="text-white font-black text-sm">
+                    {(BOOKING_STATUSES[bookingData.status as BookingStatusKey] || BOOKING_STATUSES.pending_review).label}
+                  </span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5 sm:col-span-2 md:col-span-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <span className="text-slate-400 font-bold block mb-0.5">วัตถุประสงค์:</span>
-                      <span className="text-white font-medium text-xs">{bookingData.purpose || "-"}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 font-bold block mb-0.5">หัวข้อที่สนใจ:</span>
-                      <span className="text-cyan-300 font-medium text-xs">{bookingData.interestedTopic || "-"}</span>
-                    </div>
-                  </div>
-
-                  {bookingData.specialNeeds && (
-                    <div className="mt-2 pt-2 border-t border-white/5">
-                      <span className="text-slate-400 font-bold block mb-0.5">ความต้องการพิเศษ:</span>
-                      <span className="text-amber-200 text-xs">{bookingData.specialNeeds}</span>
-                    </div>
-                  )}
-
-                  <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-xs">
-                    <span className="text-slate-400 font-bold">หนังสือราชการ:</span>
-                    {bookingData.officialDocFileName ? (
-                      <span className="text-emerald-400 font-bold flex items-center gap-1">
-                        📎 แนบแล้ว ({bookingData.officialDocFileName})
-                      </span>
-                    ) : (
-                      <span className="text-amber-300">
-                        ยังไม่ได้แนบ (สามารถนำมายื่นในวันเข้าชม)
-                      </span>
-                    )}
-                  </div>
+                {/* ผู้ประสานงาน */}
+                <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
+                  <span className="text-slate-400 font-bold block mb-1 flex items-center gap-1.5">
+                    <Phone size={12} className="text-cyan-400" /> ผู้ประสานงาน
+                  </span>
+                  <span className="text-white font-bold text-sm">{bookingData.contactName}</span>
+                  <span className="text-slate-400 text-xs block font-mono">{bookingData.contactPhone}</span>
                 </div>
               </div>
 
               {/* Change / Cancel Action Buttons */}
-              {bookingData.status !== "cancelled" && bookingData.status !== "checked-in" && (
+              {canRequestChange && (
                 <div className="mt-8 pt-6 border-t border-cyan-500/20">
                   <p className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">
                     การจัดการคำขอจอง:
@@ -431,26 +530,65 @@ function StatusSearchForm() {
                   <div className="flex flex-wrap gap-3">
                     <button
                       onClick={() => setActiveModal("change_date")}
-                      className="px-4 py-2.5 bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/30 text-cyan-300 rounded-xl text-xs font-bold transition-all active:scale-95"
+                      className="px-5 py-3 bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/30 text-cyan-300 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-2"
                     >
-                      📅 ขอเปลี่ยนวันเข้าชม
+                      <RefreshCw size={14} /> ขอเปลี่ยนวันเข้าชม
                     </button>
                     <button
                       onClick={() => setActiveModal("change_session")}
-                      className="px-4 py-2.5 bg-blue-950 hover:bg-blue-900 border border-blue-500/30 text-blue-300 rounded-xl text-xs font-bold transition-all active:scale-95"
+                      className="px-5 py-3 bg-blue-950 hover:bg-blue-900 border border-blue-500/30 text-blue-300 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-2"
                     >
-                      🕐 ขอเปลี่ยนรอบเวลา
+                      <Clock size={14} /> ขอเปลี่ยนรอบเวลา
                     </button>
                     <button
                       onClick={() => setActiveModal("cancel")}
-                      className="px-4 py-2.5 bg-red-950/60 hover:bg-red-900 border border-red-500/30 text-red-300 rounded-xl text-xs font-bold transition-all active:scale-95"
+                      className="px-5 py-3 bg-red-950/60 hover:bg-red-900 border border-red-500/30 text-red-300 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-2"
                     >
-                      ❌ ขอยกเลิกการจอง
+                      <XCircle size={14} /> ขอยกเลิกการจอง
                     </button>
                   </div>
                 </div>
               )}
             </div>
+
+            {/* Feedback Card when completed */}
+            {(bookingData.status === "completed" || bookingData.status === "checked-in") && (
+              <div className="p-6 sm:p-8 rounded-[2.5rem] bg-gradient-to-br from-amber-950/50 via-slate-900 to-cyan-950/50 border-2 border-amber-500/40 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-6 animate-in zoom-in-95">
+                <div className="flex items-start gap-4 text-left">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border-2 border-amber-400 text-amber-400 flex items-center justify-center shrink-0">
+                    <Star size={28} className="fill-amber-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-900/80 text-amber-200 text-[10px] font-black uppercase">
+                        เสร็จสิ้นการเข้าชม
+                      </span>
+                      {bookingData.hasEvaluated && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-900/80 text-emerald-200 text-[10px] font-black">
+                          ✓ ประเมินแล้ว
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-black text-white">
+                      {bookingData.hasEvaluated ? "ขอบคุณสำหรับการประเมินความพึงพอใจ" : "แบบประเมินความพึงพอใจหลังเข้าชม"}
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-1 max-w-lg leading-relaxed">
+                      {bookingData.hasEvaluated 
+                        ? `ท่านได้ให้คะแนนเฉลี่ย ${bookingData.evaluatedScore || 5}/5 ดาว ข้อเสนอแนะของท่านจะถูกนำไปปรับปรุงศูนย์การเรียนรู้ต่อไป`
+                        : "ร่วมประเมิน 9 ด้าน (1-5 ดาว) เช่น ความง่ายของระบบจอง วิทยากร นิทรรศการ ท้องฟ้าจำลอง และกิจกรรมทดลอง เพื่อพัฒนาการให้บริการ"}
+                    </p>
+                  </div>
+                </div>
+
+                <Link
+                  href={`/feedback?ref=${bookingData.bookingRef}`}
+                  className="px-6 py-4 bg-gradient-to-r from-amber-400 to-yellow-500 hover:brightness-110 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-amber-950/50 transition-all flex items-center gap-2 shrink-0 active:scale-95"
+                >
+                  <Star size={18} className="fill-slate-950" />
+                  <span>{bookingData.hasEvaluated ? "ดู/ประเมินใหม่อีกครั้ง" : "เริ่มทำแบบประเมิน"}</span>
+                </Link>
+              </div>
+            )}
 
             {/* Preparation Quick Card */}
             <div className="p-6 rounded-3xl bg-slate-900/80 border border-cyan-500/20 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -477,9 +615,9 @@ function StatusSearchForm() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-[#0e172e] rounded-3xl p-6 sm:p-8 max-w-lg w-full border-2 border-cyan-500/40 shadow-2xl relative">
               <h3 className="text-lg font-black text-white mb-2 flex items-center gap-2">
-                {activeModal === "cancel" && "❌ ขอยกเลิกการจองเข้าชม"}
-                {activeModal === "change_date" && "📅 ขอเปลี่ยนแปลงวันเข้าชม"}
-                {activeModal === "change_session" && "🕐 ขอเปลี่ยนแปลงรอบเวลา"}
+                {activeModal === "cancel" && <><XCircle size={20} className="text-red-400" /> ขอยกเลิกการจองเข้าชม</>}
+                {activeModal === "change_date" && <><RefreshCw size={20} className="text-cyan-400" /> ขอเปลี่ยนแปลงวันเข้าชม</>}
+                {activeModal === "change_session" && <><Clock size={20} className="text-blue-400" /> ขอเปลี่ยนแปลงรอบเวลา</>}
               </h3>
 
               <p className="text-xs text-slate-300 mb-4 leading-relaxed">
@@ -544,10 +682,14 @@ function StatusSearchForm() {
                   <button
                     type="submit"
                     disabled={isSubmittingRequest}
-                    className="flex-1 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 rounded-xl text-xs font-black hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                    className={`flex-1 py-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                      activeModal === "cancel" 
+                        ? "bg-red-600 hover:bg-red-500 text-white" 
+                        : "bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 hover:brightness-110"
+                    } active:scale-95`}
                   >
                     {isSubmittingRequest ? <Loader2 className="animate-spin w-4 h-4" /> : <Send size={14} />}
-                    <span>ยืนยันส่งคำขอ</span>
+                    <span>{activeModal === "cancel" ? "ยืนยันขอยกเลิก" : "ยืนยันส่งคำขอ"}</span>
                   </button>
                 </div>
               </form>

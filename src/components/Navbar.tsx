@@ -15,7 +15,8 @@ import {
   Telescope, 
   Sparkles, 
   Phone,
-  Lock
+  Lock,
+  Star
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { SITE_CONFIG } from "@/lib/config";
@@ -111,6 +112,14 @@ export default function Navbar() {
               >
                 <CalendarX size={14} />
                 <span>งดรับจอง</span>
+              </Link>
+              <Link 
+                href="/admin/feedback" 
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-950/80 border border-amber-500/40 text-amber-300 hover:text-white rounded-xl text-xs font-bold transition-all"
+                title="รายงานผลประเมินความพึงพอใจ"
+              >
+                <Star size={13} className="fill-amber-400 text-amber-400" />
+                <span>ผลประเมิน</span>
               </Link>
               <button 
                 onClick={logout}

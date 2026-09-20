@@ -25,7 +25,12 @@ import {
   FileEdit,
   Send,
   HelpCircle,
-  Sparkles
+  Sparkles,
+  UserCheck,
+  Layers,
+  Save,
+  Check,
+  Star
 } from "lucide-react";
 import { 
   collection, 
@@ -52,7 +57,7 @@ export default function AdminBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDate, setFilterDate] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"all" | "pending" | "changes">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "pending" | "changes" | "large_groups">("all");
   
   // Modals & Staff note editing
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -60,6 +65,17 @@ export default function AdminBookingsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [editingStaffNoteId, setEditingStaffNoteId] = useState<string | null>(null);
   const [staffNoteDraft, setStaffNoteDraft] = useState("");
+
+  // Speaker Coordination form state
+  const [coordStatus, setCoordStatus] = useState<string>("not_started");
+  const [assignedSpeaker, setAssignedSpeaker] = useState<string>("");
+  const [speakerCount, setSpeakerCount] = useState<number>(0);
+  const [groupSplitMethod, setGroupSplitMethod] = useState<string>("");
+  const [peoplePerGroup, setPeoplePerGroup] = useState<number>(0);
+  const [plannedActivities, setPlannedActivities] = useState<string>("");
+  const [internalNote, setInternalNote] = useState<string>("");
+  const [isSavingCoord, setIsSavingCoord] = useState(false);
+  const [coordSavedNotice, setCoordSavedNotice] = useState(false);
 
   useEffect(() => {
     fetchBookings();
@@ -88,6 +104,18 @@ export default function AdminBookingsPage() {
     return unsub;
   };
 
+  const openBookingDetails = (b: any) => {
+    setSelectedBookingDetails(b);
+    setCoordStatus(b.coordinationStatus || "not_started");
+    setAssignedSpeaker(b.assignedSpeaker || "");
+    setSpeakerCount(b.speakerCount || 0);
+    setGroupSplitMethod(b.groupSplitMethod || "");
+    setPeoplePerGroup(b.peoplePerGroup || 0);
+    setPlannedActivities(b.plannedActivities || "");
+    setInternalNote(b.internalNote || "");
+    setCoordSavedNotice(false);
+  };
+
   const handleStatusUpdate = async (id: string, newStatus: string, defaultNote?: string) => {
     try {
       await updateDoc(doc(db, "bookings", id), {
@@ -112,6 +140,38 @@ export default function AdminBookingsPage() {
     } catch (error: any) {
       console.error("Error updating staff note:", error);
       alert("เกิดข้อผิดพลาด: " + error.message);
+    }
+  };
+
+  const handleSaveCoordination = async () => {
+    if (!selectedBookingDetails) return;
+    setIsSavingCoord(true);
+    try {
+      const updates = {
+        coordinationStatus: coordStatus,
+        assignedSpeaker: assignedSpeaker.trim(),
+        speakerCount: Number(speakerCount || 0),
+        groupSplitMethod: groupSplitMethod.trim(),
+        peoplePerGroup: Number(peoplePerGroup || 0),
+        plannedActivities: plannedActivities.trim(),
+        internalNote: internalNote.trim(),
+        coordinationUpdatedAt: Timestamp.now()
+      };
+
+      await updateDoc(doc(db, "bookings", selectedBookingDetails.id), updates);
+
+      setSelectedBookingDetails({
+        ...selectedBookingDetails,
+        ...updates
+      });
+
+      setCoordSavedNotice(true);
+      setTimeout(() => setCoordSavedNotice(false), 3000);
+    } catch (e: any) {
+      console.error("Save coordination error:", e);
+      alert("เกิดข้อผิดพลาดในการบันทึกการประสานวิทยากร: " + e.message);
+    } finally {
+      setIsSavingCoord(false);
     }
   };
 
@@ -191,6 +251,7 @@ export default function AdminBookingsPage() {
     const matchesSearch = 
       (b.bookingRef && b.bookingRef.toLowerCase().includes(term)) ||
       (b.organizationName && b.organizationName.toLowerCase().includes(term)) ||
+      (b.districtProvince && b.districtProvince.toLowerCase().includes(term)) ||
       (b.contactName && b.contactName.toLowerCase().includes(term)) ||
       (b.contactPhone && b.contactPhone.toLowerCase().includes(term)) ||
       (b.userName && b.userName.toLowerCase().includes(term));
@@ -210,12 +271,39 @@ export default function AdminBookingsPage() {
     if (activeTab === "changes") {
       return matchesSearch && matchesDate && (b.hasPendingChangeRequest || (b.changeRequests && b.changeRequests.some((r: any) => r.status === "pending")));
     }
+    if (activeTab === "large_groups") {
+      return matchesSearch && matchesDate && (b.totalAttendees || 0) >= 51;
+    }
 
     return matchesSearch && matchesDate;
   });
 
   const pendingCount = bookings.filter(b => b.status === "pending").length;
   const changesCount = bookings.filter(b => b.hasPendingChangeRequest || (b.changeRequests && b.changeRequests.some((r: any) => r.status === "pending"))).length;
+  const largeGroupsCount = bookings.filter(b => (b.totalAttendees || 0) >= 51).length;
+
+  const renderCoordBadge = (status?: string) => {
+    switch (status) {
+      case "ready":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-[10px] font-black">
+            <CheckCircle2 size={11} /> พร้อมดำเนินการ
+          </span>
+        );
+      case "in_progress":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] font-black">
+            <Clock size={11} /> กำลังประสาน
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 border border-slate-700 text-slate-400 text-[10px] font-bold">
+            <AlertTriangle size={11} /> ยังไม่เริ่ม
+          </span>
+        );
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#070b16] text-white flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
@@ -243,6 +331,13 @@ export default function AdminBookingsPage() {
               <span>กำหนดวันงดรับจอง</span>
             </Link>
             <Link
+              href="/admin/feedback"
+              className="px-4 py-2.5 bg-amber-950/60 border border-amber-500/40 hover:bg-amber-900 text-amber-300 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-2"
+            >
+              <Star size={16} className="fill-amber-400 text-amber-400" />
+              <span>รายงานผลประเมิน</span>
+            </Link>
+            <Link
               href="/admin"
               className="px-4 py-2.5 bg-cyan-950/60 border border-cyan-500/40 hover:bg-cyan-900 text-cyan-300 hover:text-white rounded-xl text-xs font-black transition-all flex items-center gap-2"
             >
@@ -256,7 +351,7 @@ export default function AdminBookingsPage() {
         <div className="bg-[#0e172e] rounded-3xl p-4 sm:p-6 border border-cyan-500/20 shadow-xl mb-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
             {/* Tabs */}
-            <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-cyan-500/20">
+            <div className="flex flex-wrap items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-cyan-500/20">
               <button
                 onClick={() => setActiveTab("all")}
                 className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
@@ -276,6 +371,20 @@ export default function AdminBookingsPage() {
                 {pendingCount > 0 && (
                   <span className="px-1.5 py-0.2 bg-red-600 text-white rounded-full text-[10px] font-mono">
                     {pendingCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("large_groups")}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                  activeTab === "large_groups" ? "bg-purple-500 text-white" : "text-slate-400 hover:text-purple-300"
+                }`}
+              >
+                <span>คณะ 51+ คน (ประสานวิทยากร)</span>
+                {largeGroupsCount > 0 && (
+                  <span className="px-1.5 py-0.2 bg-purple-900 text-purple-200 rounded-full text-[10px] font-mono font-bold">
+                    {largeGroupsCount}
                   </span>
                 )}
               </button>
@@ -301,7 +410,7 @@ export default function AdminBookingsPage() {
                 <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input 
                   type="text"
-                  placeholder="ค้นหา: เลขที่การจอง, โรงเรียน, ผู้ประสานงาน..."
+                  placeholder="ค้นหา: เลขที่การจอง, โรงเรียน, อำเภอ, ผู้ประสาน..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full bg-slate-950 text-white pl-9 pr-4 py-2 rounded-xl text-xs border border-cyan-500/20 focus:outline-none focus:border-cyan-400 font-medium"
@@ -348,7 +457,8 @@ export default function AdminBookingsPage() {
                     <th className="p-4">วันที่ / รอบเวลา</th>
                     <th className="p-4 text-center">จำนวน (คน)</th>
                     <th className="p-4">ผู้ประสานงาน</th>
-                    <th className="p-4">สถานะ</th>
+                    <th className="p-4">สถานะคำขอ</th>
+                    <th className="p-4">การประสานวิทยากร (51+ คน)</th>
                     <th className="p-4">หมายเหตุเจ้าหน้าที่</th>
                     <th className="p-4 text-center">จัดการ</th>
                   </tr>
@@ -356,6 +466,7 @@ export default function AdminBookingsPage() {
                 <tbody className="divide-y divide-white/5">
                   {filteredBookings.map((b) => {
                     const hasPendingChange = b.changeRequests && b.changeRequests.some((r: any) => r.status === "pending");
+                    const isLarge = (b.totalAttendees || 0) >= 51;
 
                     return (
                       <tr key={b.id} className="hover:bg-slate-900/60 transition-colors">
@@ -374,9 +485,11 @@ export default function AdminBookingsPage() {
                           <span className="truncate block" title={b.organizationName}>
                             {b.organizationName || b.userName || "-"}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-normal block">
-                            {b.visitorType || "ทั่วไป"}
-                          </span>
+                          {b.districtProvince && (
+                            <span className="text-[10px] text-cyan-400/90 font-normal block truncate">
+                              📍 {b.districtProvince}
+                            </span>
+                          )}
                         </td>
 
                         {/* Dates & Session */}
@@ -389,7 +502,7 @@ export default function AdminBookingsPage() {
                           </span>
                         </td>
 
-                        {/* Total Attendees */}
+                        {/* Total Attendees & Screening Badge */}
                         <td className="p-4 text-center">
                           <span className="font-mono font-bold text-emerald-400 text-sm block">
                             {b.totalAttendees || b.studentsCount || 1}
@@ -414,28 +527,52 @@ export default function AdminBookingsPage() {
                         {/* Status */}
                         <td className="p-4">
                           <select
-                            value={b.status || "pending"}
+                            value={b.status || "pending_review"}
                             onChange={(e) => handleStatusUpdate(b.id, e.target.value)}
                             className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black border focus:outline-none ${
-                              b.status === "confirmed" || b.status === "approved"
+                              b.status === "confirmed"
                                 ? "bg-emerald-950 text-emerald-300 border-emerald-500/40"
-                                : b.status === "rejected"
+                                : b.status === "completed" || b.status === "checked-in"
+                                ? "bg-cyan-950 text-cyan-300 border-cyan-500/40"
+                                : b.status === "coordinating"
+                                ? "bg-purple-950 text-purple-300 border-purple-500/40"
+                                : b.status === "rejected" || b.status === "cancelled"
                                 ? "bg-red-950 text-red-300 border-red-500/40"
-                                : b.status === "cancelled"
-                                ? "bg-slate-900 text-slate-400 border-slate-700"
+                                : b.status === "change_requested"
+                                ? "bg-blue-950 text-blue-300 border-blue-500/40"
+                                : b.status === "draft"
+                                ? "bg-slate-800 text-slate-300 border-slate-600"
                                 : "bg-yellow-950 text-yellow-300 border-yellow-500/40"
                             }`}
                           >
-                            <option value="pending">รออนุมัติ (Pending)</option>
-                            <option value="confirmed">อนุมัติแล้ว (Confirmed)</option>
-                            <option value="rejected">ไม่อนุมัติ (Rejected)</option>
+                            <option value="draft">ร่างรายการ (Draft)</option>
+                            <option value="pending_review">รอตรวจสอบ (Pending Review)</option>
+                            <option value="coordinating">รอประสานวิทยากร (Coordinating)</option>
+                            <option value="confirmed">ยืนยันแล้ว (Confirmed)</option>
+                            <option value="completed">เสร็จสิ้น (Completed)</option>
+                            <option value="change_requested">ขอเปลี่ยนแปลง (Change Requested)</option>
                             <option value="cancelled">ยกเลิกแล้ว (Cancelled)</option>
-                            <option value="checked-in">เข้าชมแล้ว (Completed)</option>
                           </select>
                         </td>
 
+                        {/* Speaker Coordination Status */}
+                        <td className="p-4">
+                          {isLarge ? (
+                            <div>
+                              {renderCoordBadge(b.coordinationStatus)}
+                              {b.assignedSpeaker && (
+                                <span className="block text-[10px] text-slate-300 mt-1 font-medium truncate max-w-[140px]" title={b.assignedSpeaker}>
+                                  👤 {b.assignedSpeaker}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-600 text-[11px]">-</span>
+                          )}
+                        </td>
+
                         {/* Staff Note */}
-                        <td className="p-4 max-w-[200px]">
+                        <td className="p-4 max-w-[180px]">
                           {editingStaffNoteId === b.id ? (
                             <div className="flex items-center gap-1.5">
                               <input
@@ -469,9 +606,9 @@ export default function AdminBookingsPage() {
                         <td className="p-4 text-center">
                           <div className="flex items-center justify-center gap-2">
                             <button
-                              onClick={() => setSelectedBookingDetails(b)}
+                              onClick={() => openBookingDetails(b)}
                               className="p-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded-lg transition-all"
-                              title="ดูรายละเอียดทั้งหมด"
+                              title="ดูรายละเอียดและการประสานวิทยากร"
                             >
                               <Eye size={14} />
                             </button>
@@ -493,11 +630,11 @@ export default function AdminBookingsPage() {
           )}
         </div>
 
-        {/* DETAILS MODAL */}
+        {/* DETAILS & COORDINATION MODAL */}
         {selectedBookingDetails && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-[#0e172e] rounded-3xl p-6 sm:p-8 max-w-2xl w-full border-2 border-cyan-500/40 shadow-2xl relative max-h-[85vh] overflow-y-auto">
-              <div className="flex justify-between items-start mb-4 pb-3 border-b border-cyan-500/20">
+            <div className="bg-[#0e172e] rounded-3xl p-6 sm:p-8 max-w-3xl w-full border-2 border-cyan-500/40 shadow-2xl relative max-h-[90vh] overflow-y-auto space-y-6">
+              <div className="flex justify-between items-start pb-3 border-b border-cyan-500/20">
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">รายละเอียดคำขอจอง</span>
                   <h3 className="text-xl font-black text-white font-mono">
@@ -619,53 +756,221 @@ export default function AdminBookingsPage() {
                     <span className="text-amber-400">ยังไม่ได้แนบไฟล์ (นำมายื่นในวันเข้าชม)</span>
                   )}
                 </div>
-
-                {/* Change Requests Section */}
-                {selectedBookingDetails.changeRequests && selectedBookingDetails.changeRequests.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-cyan-500/20">
-                    <h4 className="font-black text-amber-300 mb-2 flex items-center gap-1.5">
-                      <AlertTriangle size={14} /> ประวัติคำขอเปลี่ยนแปลง / ยกเลิก
-                    </h4>
-                    <div className="space-y-2">
-                      {selectedBookingDetails.changeRequests.map((req: any, idx: number) => (
-                        <div key={idx} className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="font-bold text-amber-200">
-                              ประเภท: {req.type === 'cancel' ? 'ขอยกเลิก' : req.type === 'change_date' ? `ขอเปลี่ยนวันเป็น ${req.newDate}` : 'ขอเปลี่ยนรอบ'}
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              req.status === 'approved' ? 'bg-emerald-900 text-emerald-300' :
-                              req.status === 'rejected' ? 'bg-red-900 text-red-300' :
-                              'bg-amber-900 text-amber-300'
-                            }`}>
-                              {req.status === 'pending' ? 'รอตรวจสอบ' : req.status}
-                            </span>
-                          </div>
-                          <p className="text-slate-300 text-[11px] mb-2">เหตุผล: {req.reason}</p>
-                          {req.status === "pending" && (
-                            <div className="flex gap-2 justify-end">
-                              <button
-                                onClick={() => handleApproveChangeRequest(selectedBookingDetails, idx)}
-                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-slate-950 rounded-lg font-black text-[10px]"
-                              >
-                                อนุมัติคำขอนี้
-                              </button>
-                              <button
-                                onClick={() => handleRejectChangeRequest(selectedBookingDetails, idx)}
-                                className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white rounded-lg font-black text-[10px]"
-                              >
-                                ปฏิเสธคำขอนี้
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
 
-              <div className="mt-6 pt-4 border-t border-white/10 flex justify-end">
+              {/* ======================================================== */}
+              {/* ระบบประสานวิทยากร (สำหรับคณะ 51 คนขึ้นไป) */}
+              {/* ======================================================== */}
+              <div className="pt-4 border-t-2 border-cyan-500/30">
+                <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-purple-950/40 via-slate-900 to-cyan-950/40 border-2 border-purple-500/40 shadow-xl space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-purple-500/20">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-purple-600/30 border border-purple-400/40 flex items-center justify-center text-purple-300">
+                        <UserCheck size={18} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                          <span>ระบบประสานวิทยากร</span>
+                          {(selectedBookingDetails.totalAttendees || 0) >= 51 ? (
+                            <span className="px-2 py-0.5 rounded-full bg-purple-900 text-purple-200 text-[10px] font-bold">
+                              คณะ {selectedBookingDetails.totalAttendees} คน
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">
+                              ทั่วไป
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-[11px] text-slate-400">พื้นที่สำหรับเจ้าหน้าที่บันทึกการจัดเตรียมทีมวิทยากรและการแบ่งกลุ่ม</p>
+                      </div>
+                    </div>
+
+                    {/* Status selection */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-300">สถานะ:</span>
+                      <select
+                        value={coordStatus}
+                        onChange={(e) => setCoordStatus(e.target.value)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black border focus:outline-none ${
+                          coordStatus === "ready"
+                            ? "bg-emerald-950 text-emerald-300 border-emerald-500/50"
+                            : coordStatus === "in_progress"
+                            ? "bg-amber-950 text-amber-300 border-amber-500/50"
+                            : "bg-slate-900 text-slate-400 border-slate-700"
+                        }`}
+                      >
+                        <option value="not_started">ยังไม่เริ่ม</option>
+                        <option value="in_progress">กำลังประสาน</option>
+                        <option value="ready">พร้อมดำเนินการ</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Form fields */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    {/* 1. เจ้าหน้าที่/วิทยากรที่รับผิดชอบ */}
+                    <div>
+                      <label className="block font-bold text-purple-200 mb-1">
+                        เจ้าหน้าที่/วิทยากรที่รับผิดชอบ
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="เช่น ครูสมศักดิ์, นส.วิไลลักษณ์ หรือทีมดาราศาสตร์ชุด 1"
+                        value={assignedSpeaker}
+                        onChange={(e) => setAssignedSpeaker(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-purple-500/30 rounded-xl text-white focus:outline-none focus:border-purple-400 placeholder:text-slate-600 font-medium"
+                      />
+                    </div>
+
+                    {/* 2. จำนวนวิทยากร */}
+                    <div>
+                      <label className="block font-bold text-purple-200 mb-1">
+                        จำนวนวิทยากร (คน)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="เช่น 3"
+                        value={speakerCount || ""}
+                        onChange={(e) => setSpeakerCount(parseInt(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-purple-500/30 rounded-xl text-white focus:outline-none focus:border-purple-400 placeholder:text-slate-600 font-mono font-bold"
+                      />
+                    </div>
+
+                    {/* 3. วิธีแบ่งกลุ่ม */}
+                    <div>
+                      <label className="block font-bold text-purple-200 mb-1">
+                        วิธีแบ่งกลุ่ม
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="เช่น เวียน 4 ฐาน (โดม/หุ่นยนต์/แล็บ/กว๊าน) หรือแบ่งตามชั้น"
+                        value={groupSplitMethod}
+                        onChange={(e) => setGroupSplitMethod(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-purple-500/30 rounded-xl text-white focus:outline-none focus:border-purple-400 placeholder:text-slate-600 font-medium"
+                      />
+                    </div>
+
+                    {/* 4. จำนวนคนต่อกลุ่ม */}
+                    <div>
+                      <label className="block font-bold text-purple-200 mb-1">
+                        จำนวนคนต่อกลุ่ม (คน)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="เช่น 30 หรือคำนวณจากยอดรวม"
+                        value={peoplePerGroup || ""}
+                        onChange={(e) => setPeoplePerGroup(parseInt(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-purple-500/30 rounded-xl text-white focus:outline-none focus:border-purple-400 placeholder:text-slate-600 font-mono font-bold"
+                      />
+                    </div>
+
+                    {/* 5. กิจกรรมที่วางแผน */}
+                    <div className="sm:col-span-2">
+                      <label className="block font-bold text-purple-200 mb-1">
+                        กิจกรรมที่วางแผน
+                      </label>
+                      <textarea
+                        rows={2}
+                        placeholder="เช่น รอบฉายดาว 4K 10:00-11:00 น. -> พักกลางวัน -> แล็บเคมีและ AI หุ่นยนต์ 13:00-15:00 น."
+                        value={plannedActivities}
+                        onChange={(e) => setPlannedActivities(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-purple-500/30 rounded-xl text-white focus:outline-none focus:border-purple-400 placeholder:text-slate-600 font-medium"
+                      />
+                    </div>
+
+                    {/* 6. หมายเหตุภายใน */}
+                    <div className="sm:col-span-2">
+                      <label className="block font-bold text-purple-200 mb-1">
+                        หมายเหตุภายใน (เฉพาะเจ้าหน้าที่ / วิทยากร)
+                      </label>
+                      <textarea
+                        rows={2}
+                        placeholder="เช่น เตรียมไมค์ลอยเพิ่ม 2 ตัว, คุณครูขอดูแลนักเรียนเป็นพิเศษในห้องแล็บ ฯลฯ"
+                        value={internalNote}
+                        onChange={(e) => setInternalNote(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-purple-500/30 rounded-xl text-white focus:outline-none focus:border-purple-400 placeholder:text-slate-600 font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Save button & feedback */}
+                  <div className="flex items-center justify-between pt-2">
+                    {coordSavedNotice ? (
+                      <span className="text-emerald-400 font-bold text-xs flex items-center gap-1.5 animate-in fade-in">
+                        <Check size={16} /> บันทึกการประสานวิทยากรเรียบร้อยแล้ว!
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">
+                        {selectedBookingDetails.coordinationUpdatedAt && (
+                          <span>อัปเดตล่าสุด: {format((selectedBookingDetails.coordinationUpdatedAt as Timestamp).toDate(), 'd MMM yyyy HH:mm น.', { locale: th })}</span>
+                        )}
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleSaveCoordination}
+                      disabled={isSavingCoord}
+                      className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white font-black text-xs rounded-xl shadow-lg shadow-purple-950/40 transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                    >
+                      {isSavingCoord ? (
+                        <Loader2 className="animate-spin w-4 h-4" />
+                      ) : (
+                        <Save size={14} />
+                      )}
+                      <span>บันทึกการประสานวิทยากร</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Change Requests Section */}
+              {selectedBookingDetails.changeRequests && selectedBookingDetails.changeRequests.length > 0 && (
+                <div className="pt-4 border-t border-cyan-500/20 text-xs">
+                  <h4 className="font-black text-amber-300 mb-2 flex items-center gap-1.5">
+                    <AlertTriangle size={14} /> ประวัติคำขอเปลี่ยนแปลง / ยกเลิก
+                  </h4>
+                  <div className="space-y-2">
+                    {selectedBookingDetails.changeRequests.map((req: any, idx: number) => (
+                      <div key={idx} className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-bold text-amber-200">
+                            ประเภท: {req.type === 'cancel' ? 'ขอยกเลิก' : req.type === 'change_date' ? `ขอเปลี่ยนวันเป็น ${req.newDate}` : 'ขอเปลี่ยนรอบ'}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            req.status === 'approved' ? 'bg-emerald-900 text-emerald-300' :
+                            req.status === 'rejected' ? 'bg-red-900 text-red-300' :
+                            'bg-amber-900 text-amber-300'
+                          }`}>
+                            {req.status === 'pending' ? 'รอตรวจสอบ' : req.status}
+                          </span>
+                        </div>
+                        <p className="text-slate-300 text-[11px] mb-2">เหตุผล: {req.reason}</p>
+                        {req.status === "pending" && (
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => handleApproveChangeRequest(selectedBookingDetails, idx)}
+                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-slate-950 rounded-lg font-black text-[10px]"
+                            >
+                              อนุมัติคำขอนี้
+                            </button>
+                            <button
+                              onClick={() => handleRejectChangeRequest(selectedBookingDetails, idx)}
+                              className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white rounded-lg font-black text-[10px]"
+                            >
+                              ปฏิเสธคำขอนี้
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-4 border-t border-white/10 flex justify-end">
                 <button
                   onClick={() => setSelectedBookingDetails(null)}
                   className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all"

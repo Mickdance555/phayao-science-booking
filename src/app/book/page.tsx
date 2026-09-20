@@ -176,7 +176,19 @@ function BookingForm() {
     
     const blockCheck = isDateBlockedByAdmin(dayStart, blockedDates);
     if (blockCheck.blocked) {
-      alert(`ไม่สามารถเลือกวันนี้ได้: ${blockCheck.reason}`);
+      alert(`ไม่สามารถเลือกวันนี้ได้ (ปิดทั้งวัน): ${blockCheck.reason || "งดรับจอง"}`);
+      return;
+    }
+    if (sessionType === "morning" && blockCheck.blockedMorning) {
+      alert(`รอบเช้าของวันนี้ปิดบริการ: ${blockCheck.morningReason || blockCheck.reason || "งดรับจองรอบเช้า"}`);
+      return;
+    }
+    if (sessionType === "afternoon" && blockCheck.blockedAfternoon) {
+      alert(`รอบบ่ายของวันนี้ปิดบริการ: ${blockCheck.afternoonReason || blockCheck.reason || "งดรับจองรอบบ่าย"}`);
+      return;
+    }
+    if (sessionType === "fullday" && blockCheck.blockedFullday) {
+      alert(`ไม่สามารถเลือกเหมาทั้งวันได้เนื่องจากมีบางรอบปิดบริการ: ${blockCheck.reason || "งดรับจอง"}`);
       return;
     }
 
@@ -326,7 +338,7 @@ function BookingForm() {
         // Status & Workflows
         isLargeGroup: totalAttendees >= 51 && totalAttendees <= 150,
         isExtraLargeGroup: totalAttendees > 150,
-        status: "pending",
+        status: "pending_review",
         staffNote: totalAttendees > 150 
           ? `คณะขนาดใหญ่พิเศษ (${totalAttendees} คน) เจ้าหน้าที่จะประสานความพร้อมและการแบ่งกลุ่มฐานกิจกรรมก่อนยืนยัน`
           : totalAttendees >= 51
@@ -651,14 +663,14 @@ function BookingForm() {
               {/* ชื่อโรงเรียน/หน่วยงาน (บังคับ) */}
               <div>
                 <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
-                  ชื่อโรงเรียน/หน่วยงาน <span className="text-red-400 font-bold">* (บังคับ)</span>
+                  ชื่อโรงเรียน / หน่วยงาน / คณะบุคคล <span className="text-red-400 font-bold">* (บังคับ)</span>
                 </label>
                 <div className="relative">
                   <Building2 size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
                     type="text"
                     required
-                    placeholder="เช่น โรงเรียนพะเยาพิทยาคม หรือ อบต.บ้านต๋อม"
+                    placeholder="เช่น โรงเรียนพะเยาพิทยาคม, อบต.บ้านต๋อม, บริษัทเอกชน, ชุมชน หรือครอบครัว"
                     value={organizationName}
                     onChange={(e) => setOrganizationName(e.target.value)}
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
