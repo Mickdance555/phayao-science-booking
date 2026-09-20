@@ -4,20 +4,10 @@ import {
   FileText, 
   AlertTriangle, 
   CheckCircle2, 
-  Telescope, 
-  MapPin, 
   Phone, 
-  Mail, 
   Sparkles, 
   ShieldCheck, 
-  Building2, 
-  Users, 
-  CalendarCheck,
-  ArrowRight,
-  HelpCircle,
-  Camera,
-  Coffee,
-  Volume2
+  CalendarCheck 
 } from "lucide-react";
 import Link from "next/link";
 import { SITE_CONFIG } from "@/lib/config";
@@ -118,7 +108,7 @@ export default function VisitInfoPage() {
                 <div>
                   <span className="font-bold text-white block">หนังสือขอความอนุเคราะห์เข้าเยี่ยมชม</span>
                   <span className="text-slate-400 text-xs">
-                    ออกโดยสถานศึกษาหรือต้นสังกัด เรียน "นายกองค์การบริหารส่วนจังหวัดพะเยา" 
+                    ออกโดยสถานศึกษาหรือต้นสังกัด เรียน &quot;นายกองค์การบริหารส่วนจังหวัดพะเยา&quot; 
                     (นำมายื่นในวันเข้าชม หรือส่งล่วงหน้า)
                   </span>
                 </div>

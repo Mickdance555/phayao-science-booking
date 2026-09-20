@@ -3,27 +3,25 @@
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { 
-  LogOut, 
+  LogOut,
   Home, 
   CalendarCheck, 
   Search, 
   FileText, 
   ShieldCheck, 
-  LayoutDashboard, 
   CalendarX, 
-  TrendingUp, 
-  Telescope, 
-  Sparkles, 
-  Phone,
-  Lock,
-  Star
+  Phone, 
+  Lock, 
+  Star,
+  Telescope,
+  Sparkles
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { SITE_CONFIG } from "@/lib/config";
 import FacebookIcon from "@/components/FacebookIcon";
 
 export default function Navbar() {
-  const { user, firebaseUser, logout } = useAuth();
+  const { firebaseUser, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {

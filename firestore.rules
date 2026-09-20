@@ -29,5 +29,16 @@ service cloud.firestore {
       allow write: if request.auth != null &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
+
+    // ===== EVALUATIONS (แบบประเมินความพึงพอใจ) =====
+    match /evaluations/{evalId} {
+      // สำหรับสถิติและรายงานผล
+      allow read: if true;
+      // ประชาชนทั่วไปสามารถส่งแบบประเมินได้
+      allow create: if true;
+      // จัดการข้อมูลได้เฉพาะ Admin
+      allow update, delete: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
   }
 }

@@ -15,27 +15,20 @@ import {
   FileText, 
   Send, 
   Phone, 
-  MapPin, 
-  Sparkles, 
   ChevronRight, 
-  Info,
-  CalendarCheck,
-  Building2,
-  RefreshCw,
-  HelpCircle,
-  FileEdit,
-  UserCheck,
-  ClipboardCheck,
-  ArrowRight,
-  Star
+  Info, 
+  CalendarCheck, 
+  Building2, 
+  RefreshCw, 
+  FileEdit, 
+  UserCheck, 
+  ClipboardCheck, 
+  Star 
 } from "lucide-react";
 import { collection, query, where, getDocs, doc, updateDoc, Timestamp, arrayUnion } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { SITE_CONFIG } from "@/lib/config";
 import { differenceInDays, parseISO, startOfDay } from "date-fns";
-import { PARK_SESSIONS } from "@/lib/holidays";
 import Link from "next/link";
-import FacebookIcon from "@/components/FacebookIcon";
 
 // ─── Booking Status Definitions ─────────────────────────────────────────────
 const BOOKING_STATUSES = {
@@ -75,7 +68,6 @@ function getSessionLabel(sessionType: string): string {
 
 function StatusSearchForm() {
   const searchParams = useSearchParams();
-  const router = useRouter();
 
   const [bookingRefInput, setBookingRefInput] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
@@ -240,7 +232,7 @@ function StatusSearchForm() {
             const stepNum = index;
             const isActive = !isBranch && currentStep === stepNum;
             const isDone = !isBranch && currentStep > stepNum;
-            const isFuture = isBranch || currentStep < stepNum;
+            
             const StepIcon = step.icon;
 
             return (

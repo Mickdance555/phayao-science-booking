@@ -1,4 +1,4 @@
-import { format, getDay, parseISO, isWithinInterval, startOfDay } from "date-fns";
+import { format, getDay, parseISO, startOfDay } from "date-fns";
 
 export const PUBLIC_HOLIDAYS = [
   "2026-01-01", // New Year's Day
@@ -122,7 +122,7 @@ export const isDateBlockedByAdmin = (
         if (targetTime >= start && targetTime <= end) {
           isDateMatch = true;
         }
-      } catch (e) {
+      } catch {
         // ignore parse error
       }
     }
