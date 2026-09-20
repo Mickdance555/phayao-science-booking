@@ -7,15 +7,10 @@ import {
   ShieldCheck, 
   Lock, 
   Loader2, 
-  AlertCircle, 
-  CheckCircle2, 
-  Sparkles,
-  Info,
-  ArrowRight
+  AlertCircle 
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AUTHORIZED_ADMIN_EMAILS } from "@/lib/admins";
 
 export default function AdminLoginPage() {
   const { firebaseUser, isAdmin, signInWithGoogle, loading: authLoading } = useAuth();
@@ -104,25 +99,14 @@ export default function AdminLoginPage() {
             </button>
           </div>
 
-          {/* Access Policy Notice & Whitelist */}
-          <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-2.5 text-xs text-slate-300">
+          {/* Access Policy Notice */}
+          <div className="p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-2 text-xs text-slate-300">
             <div className="flex items-center gap-1.5 text-cyan-300 font-bold">
               <Lock size={14} />
               <span>เงื่อนไขการเข้าถึงระบบ Admin:</span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              สงวนสิทธิ์การเข้าใช้งานเฉพาะบัญชี Gmail เจ้าหน้าที่ผู้ดูแลระบบที่ได้รับอนุญาตเท่านั้น:
-            </p>
-            <div className="space-y-1 pt-1 font-mono text-[11px]">
-              {AUTHORIZED_ADMIN_EMAILS.map((em, idx) => (
-                <div key={em} className="flex items-center gap-2 text-cyan-200">
-                  <CheckCircle2 size={12} className="text-emerald-400 shrink-0" />
-                  <span>{idx + 1}. {em}</span>
-                </div>
-              ))}
-            </div>
-            <p className="text-[10px] text-slate-500 pt-1">
-              * บัญชี Gmail อื่นจะไม่สามารถเข้าถึงระบบงานหลังบ้านได้
+              สงวนสิทธิ์การเข้าใช้งานเฉพาะบัญชี Gmail ของเจ้าหน้าที่ผู้ดูแลระบบที่ได้รับอนุญาตเท่านั้น (หากไม่มีสิทธิ์ ระบบจะปฏิเสธการเข้าใช้งานโดยอัตโนมัติ)
             </p>
           </div>
 

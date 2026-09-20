@@ -17,7 +17,6 @@ import {
   LogOut,
   Users,
   ArrowRight,
-  Mail,
   Sparkles
 } from "lucide-react";
 import { 
@@ -38,7 +37,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function AdminPage() {
-  const { user, firebaseUser, loading: authLoading, signInWithGoogle, logout, authorizedEmails } = useAuth();
+  const { user, firebaseUser, loading: authLoading, signInWithGoogle, logout } = useAuth();
   const router = useRouter();
 
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
@@ -254,24 +253,14 @@ export default function AdminPage() {
               <span>เข้าสู่ระบบด้วย Google</span>
             </button>
 
-            {/* Authorized Emails Info */}
-            <div className="mt-6 p-4 rounded-2xl bg-slate-950/80 border border-cyan-500/20">
-              <div className="flex items-center gap-2 mb-3">
-                <ShieldCheck size={14} className="text-cyan-400" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">
-                  Gmail ที่ได้รับอนุญาต
-                </span>
+            {/* Access Notice */}
+            <div className="mt-6 p-4 rounded-2xl bg-slate-950/80 border border-white/10 space-y-1.5 text-xs text-slate-300">
+              <div className="flex items-center gap-1.5 text-cyan-300 font-bold">
+                <ShieldCheck size={14} />
+                <span>เงื่อนไขการเข้าถึงระบบ Admin:</span>
               </div>
-              <div className="space-y-1.5">
-                {authorizedEmails.map((em) => (
-                  <div key={em} className="flex items-center gap-2 text-xs">
-                    <Mail size={12} className="text-slate-500 shrink-0" />
-                    <span className="text-slate-300 font-mono">{em}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[10px] text-slate-500 mt-3 leading-relaxed">
-                เฉพาะ Gmail ที่ระบุข้างต้นเท่านั้นที่สามารถเข้าสู่ระบบผู้ดูแลได้ หากต้องการเพิ่มเจ้าหน้าที่ กรุณาติดต่อผู้ดูแลระบบ
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                สงวนสิทธิ์การเข้าใช้งานเฉพาะบัญชี Gmail ของเจ้าหน้าที่ผู้ดูแลระบบที่ได้รับอนุญาตเท่านั้น (หากไม่มีสิทธิ์ ระบบจะปฏิเสธการเข้าใช้งานโดยอัตโนมัติ)
               </p>
             </div>
 
