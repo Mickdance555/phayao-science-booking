@@ -14,7 +14,8 @@ import {
   Lock, 
   Star,
   Telescope,
-  Sparkles
+  Sparkles,
+  FileSpreadsheet
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { SITE_CONFIG } from "@/lib/config";
@@ -118,6 +119,14 @@ export default function Navbar() {
               >
                 <Star size={13} className="fill-amber-400 text-amber-400" />
                 <span>ผลประเมิน</span>
+              </Link>
+              <Link 
+                href="/admin/reports" 
+                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 hover:text-white rounded-xl text-xs font-bold transition-all"
+                title="รายงานสถิติและส่งออกข้อมูล"
+              >
+                <FileSpreadsheet size={13} />
+                <span>รายงาน</span>
               </Link>
               <button 
                 onClick={logout}

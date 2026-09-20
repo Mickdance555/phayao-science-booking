@@ -17,7 +17,8 @@ import {
   LogOut,
   Users,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  FileSpreadsheet
 } from "lucide-react";
 import { 
   collection, 
@@ -476,6 +477,29 @@ export default function AdminPage() {
                     เปิดกล้องสแกน QR Code หรือกรอกรหัสการจอง เพื่อตรวจสอบความถูกต้องและบันทึกเวลาการเข้าชมจริงของคณะ ณ จุดลงทะเบียน
                   </p>
                 </div>
+
+                {/* 5. Executive Reports & Export */}
+                <Link
+                  href="/admin/reports"
+                  className="p-8 rounded-[2.5rem] bg-[#0e172e] border-2 border-emerald-500/30 hover:border-emerald-400/70 shadow-2xl hover:-translate-y-1 transition-all group relative overflow-hidden md:col-span-2"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-600/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 group-hover:scale-110 transition-transform">
+                      <FileSpreadsheet size={28} />
+                    </div>
+                    <span className="px-3 py-1 bg-emerald-950 border border-emerald-500/40 text-emerald-300 rounded-full text-xs font-bold flex items-center gap-1.5">
+                      <Sparkles size={12} />
+                      CSV & Excel (Sheets)
+                    </span>
+                  </div>
+                  <h4 className="text-xl font-black text-white group-hover:text-emerald-300 transition-colors mb-1.5 flex items-center gap-2">
+                    <span>รายงานสถิติและส่งออกข้อมูล (Executive Reports & Export)</span>
+                    <ArrowRight size={18} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </h4>
+                  <p className="text-xs text-slate-400 leading-relaxed font-medium">
+                    รายงานบัญชีรายชื่อสถานศึกษาและหน่วยงานราชการ, สรุปเปรียบเทียบยอดจอง vs ยอดมาใช้งานจริง, และมีปุ่มดาวน์โหลดไฟล์ CSV และ Sheet (Excel) สำหรับนำไปใช้งานต่อในการเสนอรายงานไปยังผู้บังคับบัญชา
+                  </p>
+                </Link>
               </div>
             </div>
           </div>
