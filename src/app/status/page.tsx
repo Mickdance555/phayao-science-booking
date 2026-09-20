@@ -344,6 +344,9 @@ function StatusSearchForm() {
                 <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
                   <span className="text-slate-400 font-bold block mb-1">โรงเรียน / หน่วยงาน</span>
                   <span className="text-white font-black text-sm">{bookingData.organizationName}</span>
+                  {bookingData.districtProvince && (
+                    <span className="text-cyan-300 text-xs block mt-0.5">📍 {bookingData.districtProvince}</span>
+                  )}
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
@@ -362,12 +365,17 @@ function StatusSearchForm() {
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
+                  <span className="text-slate-400 font-bold block mb-1">ระดับชั้น</span>
+                  <span className="text-white font-bold text-sm">{bookingData.gradeLevel || "-"}</span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
                   <span className="text-slate-400 font-bold block mb-1">จำนวนผู้เข้าชมรวม</span>
                   <span className="text-emerald-400 font-black text-base">
                     {bookingData.totalAttendees || 0} คน
                   </span>
                   <span className="text-[10px] text-slate-500 block">
-                    (นักเรียน {bookingData.studentsCount || 0}, ครู {bookingData.teachersCount || 0}, ผู้ติดตาม {bookingData.othersCount || 0})
+                    (นักเรียน {bookingData.studentsCount || 0} คน, ครู/ผู้ติดตาม {bookingData.teachersCount || 0} คน)
                   </span>
                 </div>
 
@@ -375,13 +383,42 @@ function StatusSearchForm() {
                   <span className="text-slate-400 font-bold block mb-1">ผู้ประสานงาน</span>
                   <span className="text-white font-bold text-sm">{bookingData.contactName}</span>
                   <span className="text-slate-400 text-xs block font-mono">{bookingData.contactPhone}</span>
+                  {bookingData.contactEmail && (
+                    <span className="text-slate-500 text-[11px] block">{bookingData.contactEmail}</span>
+                  )}
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5">
-                  <span className="text-slate-400 font-bold block mb-1">สถานที่</span>
-                  <span className="text-slate-300 text-xs leading-tight block">
-                    อุทยานวิทยาศาสตร์และดาราศาสตร์ ต.บ้านต๋อม
-                  </span>
+                <div className="p-4 rounded-2xl bg-slate-900/60 border border-white/5 sm:col-span-2 md:col-span-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-slate-400 font-bold block mb-0.5">วัตถุประสงค์:</span>
+                      <span className="text-white font-medium text-xs">{bookingData.purpose || "-"}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 font-bold block mb-0.5">หัวข้อที่สนใจ:</span>
+                      <span className="text-cyan-300 font-medium text-xs">{bookingData.interestedTopic || "-"}</span>
+                    </div>
+                  </div>
+
+                  {bookingData.specialNeeds && (
+                    <div className="mt-2 pt-2 border-t border-white/5">
+                      <span className="text-slate-400 font-bold block mb-0.5">ความต้องการพิเศษ:</span>
+                      <span className="text-amber-200 text-xs">{bookingData.specialNeeds}</span>
+                    </div>
+                  )}
+
+                  <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-xs">
+                    <span className="text-slate-400 font-bold">หนังสือราชการ:</span>
+                    {bookingData.officialDocFileName ? (
+                      <span className="text-emerald-400 font-bold flex items-center gap-1">
+                        📎 แนบแล้ว ({bookingData.officialDocFileName})
+                      </span>
+                    ) : (
+                      <span className="text-amber-300">
+                        ยังไม่ได้แนบ (สามารถนำมายื่นในวันเข้าชม)
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 

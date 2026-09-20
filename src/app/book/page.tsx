@@ -41,9 +41,17 @@ import {
   ShieldCheck,
   FileText,
   HelpCircle,
-  Loader2
+  Loader2,
+  Paperclip,
+  UploadCloud,
+  FileUp,
+  MapPin,
+  Mail,
+  User,
+  Target,
+  Bookmark
 } from "lucide-react";
-import { collection, addDoc, Timestamp, onSnapshot, query, getDocs } from "firebase/firestore";
+import { collection, addDoc, Timestamp, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { SITE_CONFIG } from "@/lib/config";
 import { 
@@ -54,7 +62,6 @@ import {
   BlockedDateRecord 
 } from "@/lib/holidays";
 import { generateBookingRef } from "@/lib/bookingRef";
-import FacebookIcon from "@/components/FacebookIcon";
 
 function BookingForm() {
   const router = useRouter();
@@ -66,34 +73,35 @@ function BookingForm() {
   const [sessionType, setSessionType] = useState<"morning" | "afternoon" | "fullday">("morning");
   const [isMultiDay, setIsMultiDay] = useState(false);
 
-  // Blocked dates & Existing bookings for collision/status detection
+  // Blocked dates & Existing bookings for calendar
   const [blockedDates, setBlockedDates] = useState<BlockedDateRecord[]>([]);
-  const [existingBookings, setExistingBookings] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
-  // Group Details
-  const [visitorType, setVisitorType] = useState("โรงเรียน / สถานศึกษา");
+  // 1. ข้อมูลคณะ
   const [organizationName, setOrganizationName] = useState("");
-  const [gradeLevel, setGradeLevel] = useState("ประถมศึกษา (ป.1 - ป.6)");
-  
-  // Attendee counts
-  const [studentsCount, setStudentsCount] = useState<number>(30);
-  const [teachersCount, setTeachersCount] = useState<number>(3);
-  const [othersCount, setOthersCount] = useState<number>(0);
+  const [districtProvince, setDistrictProvince] = useState("");
 
-  // Contact Info
+  // 2. ข้อมูลผู้ติดต่อ
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
-  
-  // Options
-  const [interestedZones, setInterestedZones] = useState<string[]>([
-    "planetarium",
-    "ai_robotics",
-    "kwan_ecology",
-    "basic_science"
-  ]);
+
+  // 3. ข้อมูลผู้เข้าชม
+  const [gradeLevel, setGradeLevel] = useState("ประถมศึกษา (ป.1 - ป.6)");
+  const [studentsCount, setStudentsCount] = useState<number>(30);
+  const [teachersCount, setTeachersCount] = useState<number>(3);
+
+  // 4. ข้อมูลเพิ่มเติม
+  const [purpose, setPurpose] = useState("กิจกรรมทัศนศึกษาตามหลักสูตรการเรียนรู้");
+  const [customPurpose, setCustomPurpose] = useState("");
+  const [interestedTopic, setInterestedTopic] = useState("ดาราศาสตร์และระบบสุริยะ (โดมท้องฟ้าจำลอง 4K)");
+  const [customTopic, setCustomTopic] = useState("");
+  const [specialNeeds, setSpecialNeeds] = useState("");
   const [notes, setNotes] = useState("");
+
+  // ไฟล์หนังสือราชการ (ทำภายหลังได้)
+  const [docFileName, setDocFileName] = useState<string | null>(null);
+  const [docFileData, setDocFileData] = useState<string | null>(null);
 
   // Submitting & Result
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -104,10 +112,11 @@ function BookingForm() {
     sessionName: string;
     totalAttendees: number;
     organizationName: string;
+    districtProvince: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Read initial params if coming from calendar
+  // Read initial params from calendar
   useEffect(() => {
     const queryDate = searchParams.get("date");
     const querySession = searchParams.get("session") as "morning" | "afternoon" | "fullday" | null;
@@ -129,44 +138,29 @@ function BookingForm() {
     }
   }, [searchParams]);
 
-  // Load blocked dates & bookings
+  // Load blocked dates
   useEffect(() => {
-    // 1. Subscribe to blocked_dates
     const unsubBlocked = onSnapshot(collection(db, "blocked_dates"), (snapshot) => {
       const bList: BlockedDateRecord[] = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...(doc.data() as any)
       }));
       setBlockedDates(bList);
+      setLoadingData(false);
     }, (err) => {
       console.warn("Blocked dates listener err:", err);
-    });
-
-    // 2. Subscribe to bookings
-    const unsubBookings = onSnapshot(collection(db, "bookings"), (snapshot) => {
-      const bks = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setExistingBookings(bks);
-      setLoadingData(false);
-    }, (err) => {
-      console.warn("Bookings listener err:", err);
       setLoadingData(false);
     });
 
-    return () => {
-      unsubBlocked();
-      unsubBookings();
-    };
+    return () => unsubBlocked();
   }, []);
 
-  // Total calculation (Automated)
+  // Total calculation (Automated: นักเรียน + ครู/ผู้ติดตาม)
   const totalAttendees = useMemo(() => {
-    return Number(studentsCount || 0) + Number(teachersCount || 0) + Number(othersCount || 0);
-  }, [studentsCount, teachersCount, othersCount]);
+    return Number(studentsCount || 0) + Number(teachersCount || 0);
+  }, [studentsCount, teachersCount]);
 
-  // Calendar dates calculation
+  // Calendar setup
   const today = startOfDay(new Date());
   const maxDate = addDays(today, SITE_CONFIG.maxBookingDaysAhead);
   const monthStart = startOfMonth(currentMonth);
@@ -187,7 +181,6 @@ function BookingForm() {
     }
 
     if (sessionType === "fullday" && isMultiDay) {
-      // Toggle multiple selection
       const exists = selectedDates.some(d => isSameDay(d, dayStart));
       if (exists) {
         if (selectedDates.length > 1) {
@@ -201,16 +194,7 @@ function BookingForm() {
         setSelectedDates([...selectedDates, dayStart].sort((a, b) => a.getTime() - b.getTime()));
       }
     } else {
-      // Single selection
       setSelectedDates([dayStart]);
-    }
-  };
-
-  const toggleZone = (zoneId: string) => {
-    if (interestedZones.includes(zoneId)) {
-      setInterestedZones(interestedZones.filter(z => z !== zoneId));
-    } else {
-      setInterestedZones([...interestedZones, zoneId]);
     }
   };
 
@@ -224,6 +208,25 @@ function BookingForm() {
     }
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("ไฟล์เอกสารมีขนาดเกิน 5MB กรุณาเลือกไฟล์ที่มีขนาดเล็กลง หรือนำมายื่นในวันเข้าชม");
+      return;
+    }
+
+    setDocFileName(file.name);
+
+    // Read as Base64 for preview / storage
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDocFileData(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -232,19 +235,39 @@ function BookingForm() {
       return;
     }
     if (!organizationName.trim()) {
-      alert("กรุณากรอกชื่อโรงเรียน / หน่วยงาน / คณะผู้เข้าชม");
+      alert("กรุณาระบุ 'ชื่อโรงเรียน/หน่วยงาน'");
       return;
     }
-    if (totalAttendees < 1) {
-      alert("กรุณาระบุจำนวนผู้เข้าชมอย่างน้อย 1 คน");
+    if (!districtProvince.trim()) {
+      alert("กรุณาระบุ 'อำเภอ/จังหวัด'");
       return;
     }
     if (!contactName.trim()) {
-      alert("กรุณากรอกชื่อ-นามสกุล ผู้ประสานงาน");
+      alert("กรุณาระบุ 'ชื่อ-นามสกุล ผู้ติดต่อ'");
       return;
     }
     if (!contactPhone.trim() || contactPhone.trim().length < 9) {
-      alert("กรุณากรอกเบอร์โทรศัพท์ติดต่อที่ถูกต้อง (อย่างน้อย 9 หลัก) สำหรับตรวจสอบสถานะ");
+      alert("กรุณาระบุ 'เบอร์โทรศัพท์' ที่ถูกต้อง (อย่างน้อย 9 หลัก)");
+      return;
+    }
+    if (!gradeLevel.trim()) {
+      alert("กรุณาระบุ 'ระดับชั้น'");
+      return;
+    }
+    if (studentsCount < 0 || teachersCount < 0 || totalAttendees < 1) {
+      alert("กรุณาระบุจำนวนผู้เข้าชมอย่างน้อย 1 คน");
+      return;
+    }
+
+    const finalPurpose = purpose === "other" ? customPurpose.trim() : purpose;
+    if (!finalPurpose) {
+      alert("กรุณาระบุ 'วัตถุประสงค์'");
+      return;
+    }
+
+    const finalTopic = interestedTopic === "other" ? customTopic.trim() : interestedTopic;
+    if (!finalTopic) {
+      alert("กรุณาระบุ 'หัวข้อที่สนใจ'");
       return;
     }
 
@@ -256,7 +279,6 @@ function BookingForm() {
 
       const sessionObj = PARK_SESSIONS.find(s => s.id === sessionType) || PARK_SESSIONS[0];
 
-      // Format start and end timestamps
       const [startH, startM] = sessionObj.startTime.split(':').map(Number);
       const [endH, endM] = sessionObj.endTime.split(':').map(Number);
 
@@ -275,26 +297,34 @@ function BookingForm() {
         startTime: Timestamp.fromDate(firstDate),
         endTime: Timestamp.fromDate(lastDate),
         
-        // Group Info
-        visitorType: visitorType,
+        // 1. ข้อมูลคณะ
         organizationName: organizationName.trim(),
-        gradeLevel: visitorType.includes("โรงเรียน") ? gradeLevel : "",
-        studentsCount: Number(studentsCount || 0),
-        teachersCount: Number(teachersCount || 0),
-        othersCount: Number(othersCount || 0),
-        totalAttendees: totalAttendees,
+        districtProvince: districtProvince.trim(),
         
-        // Contact Info
+        // 2. ข้อมูลผู้ติดต่อ
         contactName: contactName.trim(),
         contactPhone: contactPhone.trim(),
         contactEmail: contactEmail.trim(),
         
-        // Options & Notes
-        interestedZones: interestedZones,
+        // 3. ข้อมูลผู้เข้าชม
+        gradeLevel: gradeLevel.trim(),
+        studentsCount: Number(studentsCount || 0),
+        teachersCount: Number(teachersCount || 0),
+        totalAttendees: totalAttendees,
+        
+        // 4. ข้อมูลเพิ่มเติม
+        purpose: finalPurpose,
+        interestedTopic: finalTopic,
+        specialNeeds: specialNeeds.trim(),
         notes: notes.trim(),
+
+        // หนังสือราชการแนบไฟล์
+        officialDocFileName: docFileName || null,
+        officialDocUploaded: !!docFileName,
+        officialDocUrl: docFileData ? docFileData.substring(0, 500000) : null, // Store if reasonable size
         
         // Status & Workflows
-        status: "pending", // Default to pending for approval
+        status: "pending",
         staffNote: "ได้รับคำขอจองแล้ว เจ้าหน้าที่กำลังตรวจสอบตารางความพร้อม",
         changeRequests: [],
         createdAt: Timestamp.now()
@@ -308,7 +338,8 @@ function BookingForm() {
         dates: dateStrings,
         sessionName: sessionObj.name,
         totalAttendees: totalAttendees,
-        organizationName: organizationName.trim()
+        organizationName: organizationName.trim(),
+        districtProvince: districtProvince.trim()
       });
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -342,7 +373,7 @@ function BookingForm() {
             </span>
             <h1 className="text-3xl sm:text-4xl font-black text-white mb-2">ยินดีต้อนรับสู่ Sci-Park Phayao</h1>
             <p className="text-slate-300 text-sm max-w-md mx-auto mb-8 font-medium">
-              ระบบได้รับคำขอจองเข้าเยี่ยมชมของท่านแล้ว กรุณาบันทึกเลขที่การจองนี้ไว้สำหรับตรวจสอบสถานะหรือติดต่อเจ้าหน้าที่
+              ระบบได้รับคำขอจองเข้าเยี่ยมชมของท่านแล้ว กรุณาบันทึกเลขที่การจองนี้ไว้สำหรับตรวจสอบสถานะ
             </p>
 
             {/* Booking Ref Card */}
@@ -352,7 +383,7 @@ function BookingForm() {
                 {bookingResult.bookingRef}
               </div>
               <p className="text-xs text-slate-400 mt-2">
-                ใช้เบอร์โทรศัพท์: <span className="text-white font-mono font-bold">{bookingResult.phone}</span> ควบคู่ในการตรวจสถานะ
+                ใช้เบอร์โทรศัพท์: <span className="text-white font-mono font-bold">{bookingResult.phone}</span> สำหรับตรวจสอบผลการอนุมัติ
               </p>
 
               <button
@@ -367,8 +398,12 @@ function BookingForm() {
             {/* Booking Summary Box */}
             <div className="bg-slate-900/60 rounded-2xl p-6 border border-white/10 text-left mb-8 space-y-3 text-xs sm:text-sm">
               <div className="flex justify-between border-b border-white/5 pb-2">
-                <span className="text-slate-400">หน่วยงาน / คณะ:</span>
+                <span className="text-slate-400">คณะ / โรงเรียน:</span>
                 <span className="font-bold text-white text-right">{bookingResult.organizationName}</span>
+              </div>
+              <div className="flex justify-between border-b border-white/5 pb-2">
+                <span className="text-slate-400">อำเภอ/จังหวัด:</span>
+                <span className="font-bold text-slate-300 text-right">{bookingResult.districtProvince}</span>
               </div>
               <div className="flex justify-between border-b border-white/5 pb-2">
                 <span className="text-slate-400">วันที่เข้าชม:</span>
@@ -381,7 +416,7 @@ function BookingForm() {
                 <span className="font-bold text-white text-right">{bookingResult.sessionName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">จำนวนรวมผู้เข้าชม:</span>
+                <span className="text-slate-400">จำนวนผู้เข้าชมรวม:</span>
                 <span className="font-bold text-emerald-400 text-right">{bookingResult.totalAttendees} คน</span>
               </div>
             </div>
@@ -414,23 +449,23 @@ function BookingForm() {
     <div className="min-h-screen bg-[#070b16] text-white flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
       <Navbar />
 
-      <main className="flex-1 max-w-6xl mx-auto px-4 pt-28 pb-24 w-full">
+      <main className="flex-1 max-w-5xl mx-auto px-4 pt-28 pb-24 w-full">
         {/* Header Title */}
         <div className="text-center max-w-3xl mx-auto mb-10">
           <span className="inline-flex items-center gap-1.5 px-4 py-1 rounded-full bg-cyan-950/80 text-cyan-300 text-xs font-black uppercase tracking-widest border border-cyan-500/30 mb-3 shadow-lg">
-            <Sparkles size={14} className="text-cyan-400" /> ระบบจองรอบเข้าชมออนไลน์
+            <Sparkles size={14} className="text-cyan-400" /> แบบฟอร์มจองเข้าชมออนไลน์
           </span>
           <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight mb-3">
-            จองคิวเข้าเยี่ยมชมอุทยานฯ
+            ระบบจองเข้าเยี่ยมชมอุทยานฯ
           </h1>
           <p className="text-slate-300 font-medium text-sm sm:text-base leading-relaxed">
-            จองได้สะดวกรวดเร็ว ไม่ต้องลงทะเบียนเข้าสู่ระบบ เพียงระบุข้อมูลคณะและเบอร์โทรศัพท์ 
-            พร้อมรับเลขที่การจองเพื่อติดตามผลแบบเรียลไทม์
+            กรุณากรอกข้อมูลเพื่อให้อุทยานวิทยาศาสตร์และดาราศาสตร์ อบจ.พะเยา จัดเตรียมวิทยากรและรอบฉายภาพ 
+            (ไม่ต้องสมัครสมาชิก ส่งคำขอแล้วรับรหัสตรวจสอบผลได้ทันที)
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
-          {/* STEP 1: DATE & SESSION SELECTION */}
+          {/* SECTION 0: DATE & SESSION */}
           <div className="bg-[#0e172e] rounded-[2.5rem] p-6 sm:p-10 border-2 border-cyan-500/20 shadow-2xl relative overflow-hidden">
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-cyan-500/20">
               <div className="w-10 h-10 rounded-2xl bg-cyan-600/30 border border-cyan-400/40 flex items-center justify-center font-black text-cyan-300 text-lg">
@@ -442,10 +477,10 @@ function BookingForm() {
               </div>
             </div>
 
-            {/* Session Type Picker */}
+            {/* Session Type */}
             <div className="mb-8">
               <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-3">
-                เลือกรอบเวลาเข้าชม:
+                รอบเวลาเข้าชม <span className="text-red-400">*</span>:
               </label>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {PARK_SESSIONS.map((sess) => {
@@ -478,7 +513,7 @@ function BookingForm() {
                 })}
               </div>
 
-              {/* Multi-day Option for Fullday */}
+              {/* Multi-day toggle for fullday */}
               {sessionType === "fullday" && (
                 <div className="mt-4 p-4 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-2">
@@ -510,7 +545,7 @@ function BookingForm() {
             <div>
               <div className="flex items-center justify-between mb-4">
                 <label className="text-xs font-black uppercase tracking-widest text-cyan-300">
-                  เลือกวันที่ในปฏิทิน:
+                  เลือกวันที่ในปฏิทิน <span className="text-red-400">*</span>:
                   {selectedDates.length > 0 && (
                     <span className="text-emerald-400 ml-2 font-bold normal-case">
                       (เลือกแล้ว {selectedDates.length} วัน: {selectedDates.map(d => format(d, 'd MMM yy', { locale: th })).join(", ")})
@@ -520,7 +555,6 @@ function BookingForm() {
               </div>
 
               <div className="bg-slate-950 rounded-3xl border border-cyan-500/20 overflow-hidden">
-                {/* Calendar Header */}
                 <div className="p-4 sm:p-5 flex items-center justify-between border-b border-cyan-500/15 bg-slate-900/60">
                   <button 
                     type="button" 
@@ -541,12 +575,10 @@ function BookingForm() {
                   </button>
                 </div>
 
-                {/* Day Labels */}
                 <div className="grid grid-cols-7 bg-slate-900/90 py-2.5 text-center text-[11px] font-black text-slate-400 border-b border-white/5">
                   {['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'].map(d => <div key={d}>{d}</div>)}
                 </div>
 
-                {/* Calendar Grid */}
                 <div className="grid grid-cols-7 bg-[#0b1226] p-2 gap-1.5 sm:gap-2">
                   {calendarDays.map(day => {
                     const dayStart = startOfDay(day);
@@ -558,7 +590,6 @@ function BookingForm() {
 
                     const isClickable = isCurrentMonthDay && isOp && !isPastOrOver && !blockInfo.blocked;
 
-                    // Color scheme
                     let bgClasses = "bg-slate-900/40 text-slate-600 cursor-not-allowed";
                     let badge = null;
 
@@ -586,7 +617,7 @@ function BookingForm() {
                         type="button"
                         onClick={() => isClickable && handleDateClick(day)}
                         disabled={!isClickable}
-                        className={`min-h-[64px] sm:min-h-[76px] p-1.5 rounded-2xl flex flex-col justify-between items-center transition-all text-xs font-bold ${bgClasses}`}
+                        className={`min-h-[60px] sm:min-h-[72px] p-1.5 rounded-2xl flex flex-col justify-between items-center transition-all text-xs font-bold ${bgClasses}`}
                       >
                         <span>{format(day, 'd')}</span>
                         {badge}
@@ -595,147 +626,202 @@ function BookingForm() {
                   })}
                 </div>
               </div>
-
-              {/* Status Legend */}
-              <div className="flex flex-wrap gap-4 pt-3 text-[11px] font-bold text-slate-400 justify-center">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> วันเปิดรับจอง
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-400"></span> วันงดรับจอง (ภารกิจพิเศษ)
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-slate-600"></span> ปิดทำการ (จันทร์ / วันหยุด)
-                </span>
-              </div>
             </div>
           </div>
 
-          {/* STEP 2: GROUP & ATTENDEE DETAILS */}
+          {/* SECTION 1: ข้อมูลคณะ */}
           <div className="bg-[#0e172e] rounded-[2.5rem] p-6 sm:p-10 border-2 border-cyan-500/20 shadow-2xl relative overflow-hidden">
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-cyan-500/20">
               <div className="w-10 h-10 rounded-2xl bg-cyan-600/30 border border-cyan-400/40 flex items-center justify-center font-black text-cyan-300 text-lg">
                 2
               </div>
               <div>
-                <h2 className="text-xl sm:text-2xl font-black text-white">ข้อมูลโรงเรียน / หน่วยงาน และจำนวนผู้เข้าชม</h2>
-                <p className="text-xs text-slate-400 font-medium">ระบุข้อมูลเพื่อให้อุทยานฯ จัดเตรียมวิทยากรและห้องบรรยาย</p>
+                <h2 className="text-xl sm:text-2xl font-black text-white">ข้อมูลคณะ</h2>
+                <p className="text-xs text-slate-400 font-medium">ระบุชื่อสถาบันและพื้นที่ตั้งของคณะผู้เข้าชม</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Visitor Type */}
+              {/* ชื่อโรงเรียน/หน่วยงาน (บังคับ) */}
               <div>
                 <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
-                  ประเภทคณะผู้เข้าชม *
+                  ชื่อโรงเรียน/หน่วยงาน <span className="text-red-400 font-bold">* (บังคับ)</span>
+                </label>
+                <div className="relative">
+                  <Building2 size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="เช่น โรงเรียนพะเยาพิทยาคม หรือ อบต.บ้านต๋อม"
+                    value={organizationName}
+                    onChange={(e) => setOrganizationName(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
+                  />
+                </div>
+              </div>
+
+              {/* อำเภอ/จังหวัด (บังคับ) */}
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
+                  อำเภอ / จังหวัด <span className="text-red-400 font-bold">* (บังคับ)</span>
+                </label>
+                <div className="relative">
+                  <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="เช่น อ.เมือง จ.พะเยา หรือ อ.พาน จ.เชียงราย"
+                    value={districtProvince}
+                    onChange={(e) => setDistrictProvince(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 2: ข้อมูลผู้ติดต่อ */}
+          <div className="bg-[#0e172e] rounded-[2.5rem] p-6 sm:p-10 border-2 border-cyan-500/20 shadow-2xl relative overflow-hidden">
+            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-cyan-500/20">
+              <div className="w-10 h-10 rounded-2xl bg-cyan-600/30 border border-cyan-400/40 flex items-center justify-center font-black text-cyan-300 text-lg">
+                3
+              </div>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-white">ข้อมูลผู้ติดต่อ</h2>
+                <p className="text-xs text-slate-400 font-medium">เบอร์โทรศัพท์จะใช้สำหรับเข้าตรวจผลการอนุมัติและรับการประสานงาน</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* ชื่อ-นามสกุล (บังคับ) */}
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
+                  ชื่อ - นามสกุล <span className="text-red-400 font-bold">* (บังคับ)</span>
+                </label>
+                <div className="relative">
+                  <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="เช่น อ.สมชาย ใจดี"
+                    value={contactName}
+                    onChange={(e) => setContactName(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
+                  />
+                </div>
+              </div>
+
+              {/* เบอร์โทรศัพท์ (บังคับ) */}
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
+                  เบอร์โทรศัพท์ <span className="text-red-400 font-bold">* (บังคับ)</span>
+                </label>
+                <div className="relative">
+                  <Phone size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="tel"
+                    required
+                    placeholder="08X-XXX-XXXX"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
+                  />
+                </div>
+                <span className="text-[10px] text-emerald-400 mt-1 block">ใช้สำหรับเข้าสู่ระบบตรวจสอบสถานะ</span>
+              </div>
+
+              {/* Email (ไม่บังคับ) */}
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
+                  Email <span className="text-slate-500">(ไม่บังคับ)</span>
+                </label>
+                <div className="relative">
+                  <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="email"
+                    placeholder="example@school.ac.th"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* SECTION 3: ข้อมูลผู้เข้าชม */}
+          <div className="bg-[#0e172e] rounded-[2.5rem] p-6 sm:p-10 border-2 border-cyan-500/20 shadow-2xl relative overflow-hidden">
+            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-cyan-500/20">
+              <div className="w-10 h-10 rounded-2xl bg-cyan-600/30 border border-cyan-400/40 flex items-center justify-center font-black text-cyan-300 text-lg">
+                4
+              </div>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-white">ข้อมูลผู้เข้าชม</h2>
+                <p className="text-xs text-slate-400 font-medium">ระบุระดับชั้นและจำนวนผู้ร่วมกิจกรรม (ระบบรวมจำนวนให้อัตโนมัติ)</p>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              {/* ระดับชั้น (บังคับ) */}
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
+                  ระดับชั้น <span className="text-red-400 font-bold">* (บังคับ)</span>
                 </label>
                 <select
-                  value={visitorType}
-                  onChange={(e) => setVisitorType(e.target.value)}
+                  value={gradeLevel}
+                  onChange={(e) => setGradeLevel(e.target.value)}
                   className="w-full px-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none"
                 >
-                  <option value="โรงเรียน / สถานศึกษา">โรงเรียน / สถานศึกษา (ทัศนศึกษา)</option>
-                  <option value="หน่วยงานราชการ / อบต. / เทศบาล">หน่วยงานราชการ / อบต. / เทศบาล (คณะศึกษาดูงาน)</option>
-                  <option value="องค์กรเอกชน / บริษัท">องค์กรเอกชน / บริษัท</option>
-                  <option value="กลุ่มชุมชน / ชมรม">กลุ่มชุมชน / ชมรม</option>
-                  <option value="ประชาชนทั่วไป / ครอบครัว">ประชาชนทั่วไป / ครอบครัว</option>
+                  <option value="ปฐมวัย / อนุบาล">ปฐมวัย / อนุบาล</option>
+                  <option value="ประถมศึกษา (ป.1 - ป.6)">ประถมศึกษา (ป.1 - ป.6)</option>
+                  <option value="มัธยมศึกษาตอนต้น (ม.1 - ม.3)">มัธยมศึกษาตอนต้น (ม.1 - ม.3)</option>
+                  <option value="มัธยมศึกษาตอนปลาย (ม.4 - ม.6)">มัธยมศึกษาตอนปลาย (ม.4 - ม.6)</option>
+                  <option value="อาชีวศึกษา / ปวช. / ปวส.">อาชีวศึกษา / ปวช. / ปวส.</option>
+                  <option value="อุดมศึกษา / มหาวิทยาลัย">อุดมศึกษา / มหาวิทยาลัย</option>
+                  <option value="คละระดับชั้น / ประชาชนทั่วไป">คละระดับชั้น / ประชาชนทั่วไป</option>
                 </select>
               </div>
 
-              {/* Organization Name */}
-              <div>
-                <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
-                  ชื่อโรงเรียน / สถาบัน / หน่วยงาน *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="เช่น โรงเรียนพะเยาพิทยาคม หรือ อบต.แม่ต๋ำ"
-                  value={organizationName}
-                  onChange={(e) => setOrganizationName(e.target.value)}
-                  className="w-full px-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
-                />
-              </div>
-
-              {/* Grade Level (if school) */}
-              {visitorType.includes("โรงเรียน") && (
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
-                    ระดับชั้นของผู้เรียน
-                  </label>
-                  <select
-                    value={gradeLevel}
-                    onChange={(e) => setGradeLevel(e.target.value)}
-                    className="w-full px-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none"
-                  >
-                    <option value="ปฐมวัย / อนุบาล">ปฐมวัย / อนุบาล</option>
-                    <option value="ประถมศึกษา (ป.1 - ป.6)">ประถมศึกษา (ป.1 - ป.6)</option>
-                    <option value="มัธยมศึกษาตอนต้น (ม.1 - ม.3)">มัธยมศึกษาตอนต้น (ม.1 - ม.3)</option>
-                    <option value="มัธยมศึกษาตอนปลาย (ม.4 - ม.6)">มัธยมศึกษาตอนปลาย (ม.4 - ม.6)</option>
-                    <option value="อาชีวศึกษา / ปวช. / ปวส.">อาชีวศึกษา / ปวช. / ปวส.</option>
-                    <option value="อุดมศึกษา / มหาวิทยาลัย">อุดมศึกษา / มหาวิทยาลัย</option>
-                    <option value="คละระดับชั้น">คละระดับชั้น</option>
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* Attendee Counts Breakdown & Auto-Calculated Total */}
-            <div className="mt-8 pt-6 border-t border-cyan-500/20">
-              <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-3">
-                จำนวนผู้เข้าชม (ระบบคำนวณยอดรวมให้อัตโนมัติ):
-              </label>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              {/* จำนวนนักเรียน + จำนวนครู/ผู้ติดตาม + Auto Total */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 rounded-2xl bg-slate-900/90 border border-cyan-500/20">
-                  <label className="block text-xs text-slate-400 font-bold mb-1">
-                    นักเรียน / นักศึกษา (คน)
+                  <label className="block text-xs text-slate-300 font-bold mb-1">
+                    จำนวนนักเรียน <span className="text-red-400 font-bold">* (คน)</span>
                   </label>
                   <input
                     type="number"
                     min="0"
+                    required
                     value={studentsCount}
                     onChange={(e) => setStudentsCount(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-cyan-500/30 rounded-xl text-white font-black text-xl text-center focus:border-cyan-400 focus:outline-none"
+                    className="w-full px-3 py-2 bg-slate-950 border border-cyan-500/30 rounded-xl text-white font-black text-2xl text-center focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-900/90 border border-cyan-500/20">
-                  <label className="block text-xs text-slate-400 font-bold mb-1">
-                    ครู / อาจารย์ / ผู้ดูแล (คน)
+                  <label className="block text-xs text-slate-300 font-bold mb-1">
+                    จำนวนครู / ผู้ติดตาม <span className="text-red-400 font-bold">* (คน)</span>
                   </label>
                   <input
                     type="number"
                     min="0"
+                    required
                     value={teachersCount}
                     onChange={(e) => setTeachersCount(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-cyan-500/30 rounded-xl text-white font-black text-xl text-center focus:border-cyan-400 focus:outline-none"
-                  />
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-900/90 border border-cyan-500/20">
-                  <label className="block text-xs text-slate-400 font-bold mb-1">
-                    ผู้ติดตาม / บุคคลอื่น (คน)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={othersCount}
-                    onChange={(e) => setOthersCount(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-cyan-500/30 rounded-xl text-white font-black text-xl text-center focus:border-cyan-400 focus:outline-none"
+                    className="w-full px-3 py-2 bg-slate-950 border border-cyan-500/30 rounded-xl text-white font-black text-2xl text-center focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
               </div>
 
-              {/* Auto Total Calculation Bar */}
+              {/* ระบบรวมจำนวนให้อัตโนมัติ */}
               <div className="p-5 rounded-2xl bg-gradient-to-r from-cyan-950/90 via-blue-950/90 to-indigo-950/90 border-2 border-cyan-400/40 flex items-center justify-between shadow-lg">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-cyan-500 text-slate-950 flex items-center justify-center font-black">
                     <Users size={20} />
                   </div>
                   <div>
-                    <p className="text-xs font-black uppercase tracking-widest text-cyan-300">ยอดรวมผู้เข้าชมทั้งหมด</p>
-                    <p className="text-[11px] text-slate-400">คำนวณอัตโนมัติจากทุกกลุ่ม</p>
+                    <p className="text-xs font-black uppercase tracking-widest text-cyan-300">ระบบรวมจำนวนให้อัตโนมัติ</p>
+                    <p className="text-[11px] text-slate-400">นักเรียน {studentsCount} คน + ครู/ผู้ติดตาม {teachersCount} คน</p>
                   </div>
                 </div>
                 <div className="text-3xl sm:text-4xl font-black text-emerald-400 font-mono">
@@ -745,106 +831,153 @@ function BookingForm() {
             </div>
           </div>
 
-          {/* STEP 3: CONTACT & PREFERENCES */}
+          {/* SECTION 4: ข้อมูลเพิ่มเติม */}
           <div className="bg-[#0e172e] rounded-[2.5rem] p-6 sm:p-10 border-2 border-cyan-500/20 shadow-2xl relative overflow-hidden">
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-cyan-500/20">
               <div className="w-10 h-10 rounded-2xl bg-cyan-600/30 border border-cyan-400/40 flex items-center justify-center font-black text-cyan-300 text-lg">
-                3
+                5
               </div>
               <div>
-                <h2 className="text-xl sm:text-2xl font-black text-white">ข้อมูลผู้ประสานงานและสิ่งที่ต้องการเน้น</h2>
-                <p className="text-xs text-slate-400 font-medium">เบอร์โทรศัพท์จะใช้สำหรับเข้าสู่ระบบตรวจสอบสถานะในภายหลัง</p>
+                <h2 className="text-xl sm:text-2xl font-black text-white">ข้อมูลเพิ่มเติมและหนังสือราชการ</h2>
+                <p className="text-xs text-slate-400 font-medium">วัตถุประสงค์ หัวข้อที่สนใจ และการแนบไฟล์</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-              {/* Contact Name */}
+            <div className="space-y-6">
+              {/* วัตถุประสงค์ (บังคับ) */}
               <div>
                 <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
-                  ชื่อ - นามสกุล ผู้ประสานงาน *
+                  วัตถุประสงค์ <span className="text-red-400 font-bold">* (บังคับ)</span>
+                </label>
+                <select
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                  className="w-full px-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none mb-2"
+                >
+                  <option value="กิจกรรมทัศนศึกษาตามหลักสูตรการเรียนรู้">กิจกรรมทัศนศึกษาตามหลักสูตรการเรียนรู้</option>
+                  <option value="ค่ายวิทยาศาสตร์และดาราศาสตร์เยาวชน">ค่ายวิทยาศาสตร์และดาราศาสตร์เยาวชน</option>
+                  <option value="การศึกษาดูงานเพื่อการพัฒนาองค์กร / ชุมชน">การศึกษาดูงานเพื่อการพัฒนาองค์กร / ชุมชน</option>
+                  <option value="กิจกรรมส่งเสริมการเรียนรู้นอกห้องเรียน">กิจกรรมส่งเสริมการเรียนรู้นอกห้องเรียน</option>
+                  <option value="other">อื่น ๆ (ระบุเอง)</option>
+                </select>
+
+                {purpose === "other" && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="กรุณาระบุวัตถุประสงค์การเข้าชม"
+                    value={customPurpose}
+                    onChange={(e) => setCustomPurpose(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-950 border border-cyan-400 rounded-xl text-white text-xs font-medium focus:outline-none"
+                  />
+                )}
+              </div>
+
+              {/* หัวข้อที่สนใจ (บังคับ) */}
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
+                  หัวข้อที่สนใจ <span className="text-red-400 font-bold">* (บังคับ)</span>
+                </label>
+                <select
+                  value={interestedTopic}
+                  onChange={(e) => setInterestedTopic(e.target.value)}
+                  className="w-full px-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none mb-2"
+                >
+                  <option value="ดาราศาสตร์และระบบสุริยะ (โดมท้องฟ้าจำลอง 4K)">ดาราศาสตร์และระบบสุริยะ (โดมท้องฟ้าจำลอง 4K)</option>
+                  <option value="เทคโนโลยีหุ่นยนต์และปัญญาประดิษฐ์ AI / Metaverse">เทคโนโลยีหุ่นยนต์และปัญญาประดิษฐ์ AI / Metaverse</option>
+                  <option value="วิทยาศาสตร์พื้นฐานและการทดลองทางวิทยาศาสตร์">วิทยาศาสตร์พื้นฐานและการทดลองทางวิทยาศาสตร์</option>
+                  <option value="นิเวศวิทยากว๊านพะเยาและความหลากหลายทางชีวภาพ">นิเวศวิทยากว๊านพะเยาและความหลากหลายทางชีวภาพ</option>
+                  <option value="นิทรรศการรวมทุกโซน (Comprehensive Tour)">นิทรรศการรวมทุกโซน (Comprehensive Tour)</option>
+                  <option value="other">อื่น ๆ (ระบุเอง)</option>
+                </select>
+
+                {interestedTopic === "other" && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="กรุณาระบุหัวข้อที่สนใจ"
+                    value={customTopic}
+                    onChange={(e) => setCustomTopic(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-950 border border-cyan-400 rounded-xl text-white text-xs font-medium focus:outline-none"
+                  />
+                )}
+              </div>
+
+              {/* ความต้องการพิเศษ (ไม่บังคับ) */}
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
+                  ความต้องการพิเศษ <span className="text-slate-500">(ไม่บังคับ)</span>
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="เช่น อ.สมชาย ใจดี"
-                  value={contactName}
-                  onChange={(e) => setContactName(e.target.value)}
-                  className="w-full px-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
+                  placeholder="เช่น มีผู้ใช้รถเข็น Wheelchair 2 ท่าน, ต้องการให้เน้นบรรยายภาษาคำเมือง ฯลฯ"
+                  value={specialNeeds}
+                  onChange={(e) => setSpecialNeeds(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-medium text-xs sm:text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
                 />
               </div>
 
-              {/* Contact Phone */}
+              {/* หมายเหตุ (ไม่บังคับ) */}
               <div>
                 <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
-                  เบอร์โทรศัพท์ติดต่อ * <span className="text-emerald-400">(ใช้เช็คสถานะ)</span>
+                  หมายเหตุ <span className="text-slate-500">(ไม่บังคับ)</span>
                 </label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="08X-XXX-XXXX"
-                  value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
-                  className="w-full px-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
+                <textarea
+                  rows={2}
+                  placeholder="เช่น คณะเดินทางด้วยรถบัส 2 คัน หรือข้อมูลอื่น ๆ ที่ประสงค์แจ้งเจ้าหน้าที่"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-medium text-xs sm:text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
                 />
               </div>
 
-              {/* Contact Email / Line */}
-              <div>
-                <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
-                  อีเมล หรือ LINE ID (ถ้ามี)
-                </label>
-                <input
-                  type="text"
-                  placeholder="ระบุเพื่อรับการแจ้งเตือนเพิ่มเติม"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  className="w-full px-4 py-3.5 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-bold text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
-                />
-              </div>
-            </div>
+              {/* หนังสือราชการแนบไฟล์ — ทำภายหลังได้ */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-cyan-300 flex items-center gap-1.5">
+                    <FileUp size={15} className="text-cyan-400" />
+                    หนังสือราชการแนบไฟล์
+                  </label>
+                  <span className="text-[11px] font-bold text-amber-300 bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                    — ทำภายหลังได้
+                  </span>
+                </div>
 
-            {/* Zones of Interest */}
-            <div className="mb-6">
-              <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-3">
-                โซนนิทรรศการที่ต้องการเน้นเข้าชม (เลือกได้หลายข้อ):
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                {SITE_CONFIG.zones.map((zone) => {
-                  const isChecked = interestedZones.includes(zone.id);
-                  return (
-                    <div
-                      key={zone.id}
-                      onClick={() => toggleZone(zone.id)}
-                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-center gap-3 ${
-                        isChecked
-                          ? "bg-cyan-950/80 border-cyan-400 text-white"
-                          : "bg-slate-900/60 border-cyan-500/20 text-slate-400 hover:border-cyan-500/40"
-                      }`}
-                    >
-                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
-                        isChecked ? "bg-cyan-400 border-cyan-400 text-slate-950" : "border-slate-600"
-                      }`}>
-                        {isChecked && <Check size={14} />}
-                      </div>
-                      <span className="text-xs font-bold leading-tight">{zone.title}</span>
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/80 border border-cyan-500/20 text-xs">
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <label className="px-5 py-2.5 bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 hover:text-white rounded-xl font-bold cursor-pointer transition-all flex items-center gap-2 shrink-0 active:scale-95">
+                      <Paperclip size={16} />
+                      <span>{docFileName ? "เปลี่ยนไฟล์" : "เลือกไฟล์หนังสือราชการ (PDF/รูปภาพ)"}</span>
+                      <input 
+                        type="file" 
+                        accept=".pdf,image/*" 
+                        onChange={handleFileUpload} 
+                        className="hidden" 
+                      />
+                    </label>
+
+                    <div className="flex-1 text-center sm:text-left">
+                      {docFileName ? (
+                        <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                          <CheckCircle2 size={16} />
+                          <span className="truncate max-w-xs">{docFileName}</span>
+                          <button
+                            type="button"
+                            onClick={() => { setDocFileName(null); setDocFileData(null); }}
+                            className="text-red-400 hover:underline text-[11px] ml-2"
+                          >
+                            ลบไฟล์
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-slate-400">
+                          (หากยังไม่มีหนังสือราชการ สามารถข้ามไปก่อนได้ และนำมายื่นในวันเข้าชม หรือส่งให้เจ้าหน้าที่ในภายหลัง)
+                        </p>
+                      )}
                     </div>
-                  );
-                })}
+                  </div>
+                </div>
               </div>
-            </div>
-
-            {/* Notes / Special Requests */}
-            <div>
-              <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-2">
-                หมายเหตุเพิ่มเติม / ความประสงค์พิเศษ
-              </label>
-              <textarea
-                rows={3}
-                placeholder="เช่น การเดินทางมาด้วยรถบัส 2 คัน, ต้องการให้บรรยายเน้นเรื่องดาราศาสตร์ไทย, มีนักเรียนที่ใช้รถเข็น Wheelchair เป็นต้น"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-900 border border-cyan-500/30 rounded-2xl text-white font-medium text-xs sm:text-sm focus:border-cyan-400 focus:outline-none placeholder:text-slate-600"
-              />
             </div>
           </div>
 
@@ -868,7 +1001,7 @@ function BookingForm() {
               )}
             </button>
             <p className="text-xs text-slate-400 mt-3">
-              เมื่อส่งคำขอแล้ว ระบบจะออกรหัสการจอง (Booking Ref) สำหรับนำไปตรวจสถานะทันที
+              ระบบจะออกเลขที่การจอง (Booking Ref) ทันที เพื่อนำไปตรวจสอบผลการอนุมัติและปรับเปลี่ยนวัน
             </p>
           </div>
         </form>

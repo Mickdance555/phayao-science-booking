@@ -507,10 +507,13 @@ export default function AdminBookingsPage() {
                   <div className="p-3 rounded-xl bg-slate-900">
                     <span className="text-slate-400 block font-bold">ชื่อหน่วยงาน / โรงเรียน:</span>
                     <span className="text-white font-black text-sm">{selectedBookingDetails.organizationName}</span>
+                    {selectedBookingDetails.districtProvince && (
+                      <span className="text-cyan-300 text-xs block mt-0.5">📍 {selectedBookingDetails.districtProvince}</span>
+                    )}
                   </div>
                   <div className="p-3 rounded-xl bg-slate-900">
-                    <span className="text-slate-400 block font-bold">ประเภท:</span>
-                    <span className="text-white font-bold">{selectedBookingDetails.visitorType}</span>
+                    <span className="text-slate-400 block font-bold">ระดับชั้น:</span>
+                    <span className="text-white font-bold">{selectedBookingDetails.gradeLevel || selectedBookingDetails.visitorType || "-"}</span>
                   </div>
                 </div>
 
@@ -539,8 +542,29 @@ export default function AdminBookingsPage() {
                     <a href={`tel:${selectedBookingDetails.contactPhone}`} className="text-cyan-300 font-mono font-bold hover:underline">
                       {selectedBookingDetails.contactPhone}
                     </a>
+                    {selectedBookingDetails.contactEmail && (
+                      <span className="text-slate-500 text-[11px] block">{selectedBookingDetails.contactEmail}</span>
+                    )}
                   </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl bg-slate-900">
+                    <span className="text-slate-400 block font-bold">วัตถุประสงค์:</span>
+                    <span className="text-white font-medium">{selectedBookingDetails.purpose || "-"}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-900">
+                    <span className="text-slate-400 block font-bold">หัวข้อที่สนใจ:</span>
+                    <span className="text-cyan-300 font-medium">{selectedBookingDetails.interestedTopic || "-"}</span>
+                  </div>
+                </div>
+
+                {selectedBookingDetails.specialNeeds && (
+                  <div className="p-3 rounded-xl bg-slate-900 border border-amber-500/20">
+                    <span className="text-slate-400 block font-bold mb-0.5">ความต้องการพิเศษ:</span>
+                    <span className="text-amber-200">{selectedBookingDetails.specialNeeds}</span>
+                  </div>
+                )}
 
                 {selectedBookingDetails.notes && (
                   <div className="p-3 rounded-xl bg-slate-900 border border-white/5">
@@ -548,6 +572,17 @@ export default function AdminBookingsPage() {
                     <p className="text-slate-200 leading-relaxed">{selectedBookingDetails.notes}</p>
                   </div>
                 )}
+
+                <div className="p-3 rounded-xl bg-slate-900 border border-cyan-500/20 flex items-center justify-between">
+                  <span className="text-slate-400 font-bold">หนังสือราชการแนบ:</span>
+                  {selectedBookingDetails.officialDocFileName ? (
+                    <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                      📎 {selectedBookingDetails.officialDocFileName}
+                    </span>
+                  ) : (
+                    <span className="text-amber-400">ยังไม่ได้แนบไฟล์ (นำมายื่นในวันเข้าชม)</span>
+                  )}
+                </div>
 
                 {/* Change Requests Section */}
                 {selectedBookingDetails.changeRequests && selectedBookingDetails.changeRequests.length > 0 && (
