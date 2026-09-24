@@ -360,7 +360,9 @@ function BookingForm() {
           ? `คณะมีจำนวนมากกว่า 50 คน (${totalAttendees} คน) เจ้าหน้าที่จะตรวจสอบและประสานความพร้อมก่อนยืนยัน`
           : "ได้รับคำขอจองแล้ว เจ้าหน้าที่กำลังตรวจสอบตารางความพร้อม",
         changeRequests: [],
-        createdAt: Timestamp.now()
+        createdAt: Timestamp.now(),
+        bookedAt: Timestamp.now(),
+        bookedAtText: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
       };
 
       await addDoc(collection(db, "bookings"), payload);

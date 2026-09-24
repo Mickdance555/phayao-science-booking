@@ -137,6 +137,19 @@ export default function AdminReportsPage() {
         if (d.startTime instanceof Timestamp) sDate = d.startTime.toDate();
         if (d.endTime instanceof Timestamp) eDate = d.endTime.toDate();
         if (d.createdAt instanceof Timestamp) cDate = d.createdAt.toDate();
+        else if (d.createdAt && typeof d.createdAt.toDate === 'function') cDate = d.createdAt.toDate();
+        else if (d.createdAt && d.createdAt.seconds) cDate = new Date(d.createdAt.seconds * 1000);
+        else if (d.createdAt) cDate = new Date(d.createdAt);
+        else if (d.bookedAt instanceof Timestamp) cDate = d.bookedAt.toDate();
+        else if (d.bookedAt) cDate = new Date(d.bookedAt);
+
+        // Fallback from bookingRef e.g. PSP-20260925-6223
+        if (!cDate && d.bookingRef) {
+          const match = String(d.bookingRef).match(/PSP-(\d{4})(\d{2})(\d{2})/);
+          if (match) {
+            cDate = new Date(`${match[1]}-${match[2]}-${match[3]}`);
+          }
+        }
         if (d.checkedInAt instanceof Timestamp) checkInDate = d.checkedInAt.toDate();
 
         // Parse dates array fallback
@@ -441,6 +454,7 @@ export default function AdminReportsPage() {
     const headers = [
       "ลำดับ",
       "รหัสการจอง",
+      "วันเวลาที่ทำรายการจอง",
       "วันที่เข้าชม",
       "รอบเวลา",
       "ชื่อโรงเรียน / หน่วยงานราชการ",
@@ -473,9 +487,12 @@ export default function AdminReportsPage() {
                          b.status === "coordinating" ? "รอประสานวิทยากร" :
                          b.status === "change_requested" ? "ขอเปลี่ยนแปลง" : "ยกเลิก";
 
+      const bookedAtStr = b.createdAt ? format(b.createdAt, 'yyyy-MM-dd HH:mm:ss') : "-";
+
       return [
         idx + 1,
         b.bookingRef,
+        bookedAtStr,
         dateStr,
         b.sessionTitle || b.sessionTimeRange,
         b.organizationName,
@@ -605,6 +622,7 @@ export default function AdminReportsPage() {
             <tr>
               <th style="width: 45px;">ลำดับ</th>
               <th style="width: 130px;">รหัสการจอง</th>
+              <th style="width: 140px;">วันเวลาที่ทำรายการจอง</th>
               <th style="width: 110px;">วันที่เข้าชม</th>
               <th style="width: 140px;">รอบเวลา</th>
               <th style="width: 260px;">ชื่อโรงเรียน / หน่วยงานราชการ</th>
@@ -1054,8 +1072,14 @@ export default function AdminReportsPage() {
                         <td className="py-3.5 px-4 text-center font-mono text-slate-500 font-bold">
                           {idx + 1}
                         </td>
-                        <td className="py-3.5 px-4 font-mono font-bold text-cyan-300 print:text-black">
-                          {b.bookingRef}
+                        <td className="py-3.5 px-4">
+                          <span className="font-mono font-bold text-cyan-300 block text-xs print:text-black">
+                            {b.bookingRef}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-sans font-medium flex items-center gap-1 mt-0.5 print:hidden">
+                            <Clock size={10} className="text-cyan-400 shrink-0" />
+                            <span>จองเมื่อ: {b.createdAt ? format(b.createdAt, 'd MMM yy HH:mm', { locale: th }) : "-"}</span>
+                          </span>
                         </td>
                         <td className="py-3.5 px-4 whitespace-nowrap text-slate-300 print:text-black font-medium">
                           {formatThaiDate(b.startTime, b.dates)}
@@ -1143,6 +1167,10 @@ export default function AdminReportsPage() {
                   <p className="text-xs text-slate-400 mt-0.5">
                     {selectedBooking.districtProvince || "ไม่ระบุพื้นที่"}
                   </p>
+                  <div className="text-[11px] text-slate-300 flex items-center gap-1.5 mt-2 font-mono bg-slate-900 px-2.5 py-1 rounded-lg border border-cyan-500/30 w-fit">
+                    <Clock size={12} className="text-cyan-400" />
+                    <span>วันเวลาที่จองเข้ามา: <strong className="text-cyan-300">{selectedBooking.createdAt ? format(selectedBooking.createdAt, 'd MMMM yyyy เวลา HH:mm:ss น.', { locale: th }) : "-"}</strong></span>
+                  </div>
                 </div>
                 <button
                   onClick={() => setSelectedBooking(null)}

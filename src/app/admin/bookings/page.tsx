@@ -83,18 +83,49 @@ export default function AdminBookingsPage() {
 
   const fetchBookings = () => {
     setLoading(true);
-    const q = query(collection(db, "bookings"), orderBy("createdAt", "desc"));
+    const q = collection(db, "bookings");
     const unsub = onSnapshot(q, (snapshot) => {
       const bookingData = snapshot.docs.map(doc => {
         const data = doc.data();
+        let createdDate: Date | null = null;
+        if (data.createdAt instanceof Timestamp) {
+          createdDate = data.createdAt.toDate();
+        } else if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+          createdDate = data.createdAt.toDate();
+        } else if (data.createdAt && data.createdAt.seconds) {
+          createdDate = new Date(data.createdAt.seconds * 1000);
+        } else if (data.createdAt) {
+          createdDate = new Date(data.createdAt);
+        } else if (data.bookedAt instanceof Timestamp) {
+          createdDate = data.bookedAt.toDate();
+        } else if (data.bookedAt) {
+          createdDate = new Date(data.bookedAt);
+        }
+
+        // Fallback: extract date from bookingRef e.g. PSP-20260925-6223
+        if (!createdDate && data.bookingRef) {
+          const match = String(data.bookingRef).match(/PSP-(\d{4})(\d{2})(\d{2})/);
+          if (match) {
+            createdDate = new Date(`${match[1]}-${match[2]}-${match[3]}`);
+          }
+        }
+
         return {
           id: doc.id,
           ...data,
           start: data.startTime ? (data.startTime as Timestamp).toDate() : null,
           end: data.endTime ? (data.endTime as Timestamp).toDate() : null,
-          created: data.createdAt ? (data.createdAt as Timestamp).toDate() : new Date()
+          created: createdDate || new Date()
         };
       });
+
+      // Sort newest created first
+      bookingData.sort((a, b) => {
+        const timeA = a.created ? a.created.getTime() : 0;
+        const timeB = b.created ? b.created.getTime() : 0;
+        return timeB - timeA;
+      });
+
       setBookings(bookingData);
       setLoading(false);
     }, (err) => {
@@ -471,10 +502,16 @@ export default function AdminBookingsPage() {
                     return (
                       <tr key={b.id} className="hover:bg-slate-900/60 transition-colors">
                         {/* Ref */}
-                        <td className="p-4 font-mono font-bold text-cyan-300">
-                          {b.bookingRef || "PSP-LEGACY"}
+                        <td className="p-4">
+                          <span className="font-mono font-bold text-cyan-300 block text-xs">
+                            {b.bookingRef || "PSP-LEGACY"}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-sans font-medium flex items-center gap-1 mt-1">
+                            <Clock size={11} className="text-cyan-400 shrink-0" />
+                            <span>จองเมื่อ: {b.created ? format(b.created, 'd MMM yy HH:mm น.', { locale: th }) : "-"}</span>
+                          </span>
                           {hasPendingChange && (
-                            <span className="block text-[9px] text-amber-400 font-sans font-black mt-0.5">
+                            <span className="inline-block px-1.5 py-0.5 rounded bg-amber-950/80 border border-amber-500/40 text-[9px] text-amber-300 font-sans font-black mt-1">
                               ⚠️ มีคำขอเปลี่ยนแปลง
                             </span>
                           )}
@@ -640,6 +677,10 @@ export default function AdminBookingsPage() {
                   <h3 className="text-xl font-black text-white font-mono">
                     {selectedBookingDetails.bookingRef || "PSP-XXXX"}
                   </h3>
+                  <div className="text-[11px] text-slate-300 flex items-center gap-1.5 mt-1 font-mono bg-slate-900 px-2.5 py-1 rounded-lg border border-cyan-500/30 w-fit">
+                    <Clock size={12} className="text-cyan-400" />
+                    <span>วันเวลาที่จองเข้ามา: <strong className="text-cyan-300">{selectedBookingDetails.created ? format(selectedBookingDetails.created, 'd MMMM yyyy เวลา HH:mm:ss น.', { locale: th }) : "-"}</strong></span>
+                  </div>
                 </div>
                 <button
                   onClick={() => setSelectedBookingDetails(null)}
