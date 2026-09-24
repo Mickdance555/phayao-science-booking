@@ -454,7 +454,7 @@ export default function AdminBlockedDatesPage() {
 
               {blockedList.length === 0 ? (
                 <div className="p-12 text-center text-slate-500 text-xs">
-                  ยังไม่มีการตั้งค่าวันงดรับจองพิเศษ (เปิดบริการตามปกติทุกวันอังคาร - อาทิตย์)
+                  ยังไม่มีการตั้งค่าวันงดรับจองพิเศษ (เปิดบริการตามปกติทุกวันจันทร์ - ศุกร์)
                 </div>
               ) : (
                 <div className="space-y-3">

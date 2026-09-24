@@ -510,7 +510,7 @@ function BookingForm() {
               </div>
               <div>
                 <h2 className="text-xl sm:text-2xl font-black text-white">เลือกรอบและวันที่ต้องการเข้าชม</h2>
-                <p className="text-xs text-slate-400 font-medium">เปิดบริการ อังคาร - อาทิตย์ (ปิดวันจันทร์และวันหยุดนักขัตฤกษ์)</p>
+                <p className="text-xs text-slate-400 font-medium">เปิดบริการ จันทร์ - ศุกร์ (ปิดวันเสาร์ - อาทิตย์ และวันหยุดนักขัตฤกษ์)</p>
               </div>
             </div>
 

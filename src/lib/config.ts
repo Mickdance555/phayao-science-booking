@@ -8,8 +8,8 @@ export const SITE_CONFIG = {
   phoneDisplay: "054-480-194",
   facebookUrl: "https://www.facebook.com/sciparkphayao",
   facebookName: "อุทยานวิทยาศาสตร์และดาราศาสตร์ อบจ.พะเยา",
-  openingHours: "วันอังคาร - วันอาทิตย์ 08:30 - 16:30 น.",
-  closedDaysNote: "ปิดทำการทุกวันจันทร์ และวันหยุดนักขัตฤกษ์",
+  openingHours: "วันจันทร์ - วันศุกร์ 08:30 - 16:30 น.",
+  closedDaysNote: "ปิดทำการวันเสาร์ - วันอาทิตย์ และวันหยุดนักขัตฤกษ์",
   maxBookingDaysAhead: 30, // สามารถจองล่วงหน้าได้ 30 วัน
   maxVisitorsPerSlot: 200, // รองรับผู้เข้าชมได้สูงสุด 200 คนต่อรอบ
   

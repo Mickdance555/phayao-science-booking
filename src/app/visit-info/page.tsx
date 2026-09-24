@@ -42,7 +42,7 @@ export default function VisitInfoPage() {
               </div>
               <div>
                 <h2 className="text-xl font-black text-white">เวลาเข้าชมและรอบบริการ</h2>
-                <p className="text-xs text-cyan-400 font-bold">เปิดวันอังคาร - วันอาทิตย์ (ปิดวันจันทร์)</p>
+                <p className="text-xs text-cyan-400 font-bold">เปิดวันจันทร์ - วันศุกร์ (08:30 - 16:30 น.) ปิดวันเสาร์ - วันอาทิตย์</p>
               </div>
             </div>
 

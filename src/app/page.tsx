@@ -204,8 +204,8 @@ export default function LandingPage() {
                  </span>
               </h1>
               <p className="text-lg sm:text-xl text-slate-300 font-bold leading-relaxed mb-10 max-w-3xl mx-auto">
-                 เปิดให้บริการวันอังคาร - วันอาทิตย์ (08.30 - 16.30 น.) <br className="hidden sm:block" />
-                 ปิดบริการวันจันทร์และวันหยุดนักขัตฤกษ์ • เข้าชมฟรี ไม่มีค่าใช้จ่าย
+                 เปิดให้บริการวันจันทร์ - วันศุกร์ (08.30 - 16.30 น.) <br className="hidden sm:block" />
+                 ปิดบริการวันเสาร์ - วันอาทิตย์ และวันหยุดนักขัตฤกษ์ • เข้าชมฟรี ไม่มีค่าใช้จ่าย
               </p>
               
               {/* CTA Buttons (No Login Required) */}
@@ -319,7 +319,7 @@ export default function LandingPage() {
                     <AlertTriangle size={14} /> จองล่วงหน้าได้สูงสุด {maxBookingDays} วัน
                  </div>
                  <div className="inline-flex items-center gap-2 bg-cyan-950/60 text-cyan-300 px-4 py-2 rounded-xl text-xs font-black border border-cyan-500/30">
-                    <Clock size={14} /> อังคาร - อาทิตย์ 08:30 - 16:30 น. (ปิดวันจันทร์)
+                    <Clock size={14} /> จันทร์ - ศุกร์ 08:30 - 16:30 น. (ปิดเสาร์ - อาทิตย์)
                  </div>
               </div>
               <div className="w-16 h-1 bg-gradient-to-r from-cyan-400 to-blue-500 mx-auto mt-6 rounded-full"></div>
