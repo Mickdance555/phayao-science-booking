@@ -75,6 +75,7 @@ function BookingForm() {
 
   // Blocked dates & Existing bookings for calendar
   const [blockedDates, setBlockedDates] = useState<BlockedDateRecord[]>([]);
+  const [bookings, setBookings] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
   // 1. ข้อมูลคณะ
@@ -138,7 +139,7 @@ function BookingForm() {
     }
   }, [searchParams]);
 
-  // Load blocked dates
+  // Load blocked dates & bookings in real-time
   useEffect(() => {
     const unsubBlocked = onSnapshot(collection(db, "blocked_dates"), (snapshot) => {
       const bList: BlockedDateRecord[] = snapshot.docs.map((doc) => ({
@@ -146,29 +147,95 @@ function BookingForm() {
         ...(doc.data() as any)
       }));
       setBlockedDates(bList);
-      setLoadingData(false);
     }, (err) => {
       console.warn("Blocked dates listener err:", err);
+    });
+
+    const unsubBookings = onSnapshot(collection(db, "bookings"), (snapshot) => {
+      const bkList = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as any)
+      }));
+      setBookings(bkList);
+      setLoadingData(false);
+    }, (err) => {
+      console.warn("Bookings listener err:", err);
       setLoadingData(false);
     });
 
-    return () => unsubBlocked();
+    return () => {
+      unsubBlocked();
+      unsubBookings();
+    };
   }, []);
+
+  // Get bookings for a particular date (supports both single date and multi-day arrays)
+  const getDayBookings = (date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return bookings.filter((b: any) => {
+      if (b.status === 'cancelled' || b.status === 'rejected') return false;
+      if (Array.isArray(b.dates) && b.dates.includes(dateStr)) return true;
+      if (b.start && isSameDay(b.start, date)) return true;
+      return false;
+    });
+  };
+
+  // Get session occupancy and details for a date
+  const getDayBookingStatus = (date: Date) => {
+    const dayBookings = getDayBookings(date);
+    const fulldayBooking = dayBookings.find((b: any) => b.sessionType === 'fullday');
+    const morningBooking = dayBookings.find((b: any) => b.sessionType === 'morning');
+    const afternoonBooking = dayBookings.find((b: any) => b.sessionType === 'afternoon');
+
+    const hasFullday = !!fulldayBooking;
+    const hasMorning = !!morningBooking;
+    const hasAfternoon = !!afternoonBooking;
+
+    const isMorningOccupied = hasFullday || hasMorning;
+    const isAfternoonOccupied = hasFullday || hasAfternoon;
+    const isFulldayOccupied = hasFullday || hasMorning || hasAfternoon;
+    const isAllFull = hasFullday || (hasMorning && hasAfternoon);
+
+    return {
+      dayBookings,
+      fulldayBooking,
+      morningBooking,
+      afternoonBooking,
+      hasFullday,
+      hasMorning,
+      hasAfternoon,
+      isMorningOccupied,
+      isAfternoonOccupied,
+      isFulldayOccupied,
+      isAllFull,
+    };
+  };
 
   // Auto-select nearest available operational date if none selected
   useEffect(() => {
-    if (selectedDates.length === 0) {
+    if (selectedDates.length === 0 && !loadingData) {
       const todayStart = startOfDay(new Date());
       for (let i = 1; i <= 30; i++) {
         const candidate = addDays(todayStart, i);
-        if (isOperationalDay(candidate) && !isDateBlockedByAdmin(candidate, blockedDates).blocked) {
-          setSelectedDates([candidate]);
-          setCurrentMonth(candidate);
-          break;
+        if (isOperationalDay(candidate)) {
+          const block = isDateBlockedByAdmin(candidate, blockedDates);
+          if (!block.blocked) {
+            const bStatus = getDayBookingStatus(candidate);
+            if (!bStatus.isAllFull) {
+              setSelectedDates([candidate]);
+              setCurrentMonth(candidate);
+              if (sessionType === "morning" && bStatus.isMorningOccupied && !bStatus.isAfternoonOccupied) {
+                setSessionType("afternoon");
+              } else if (sessionType === "afternoon" && bStatus.isAfternoonOccupied && !bStatus.isMorningOccupied) {
+                setSessionType("morning");
+              }
+              break;
+            }
+          }
         }
       }
     }
-  }, [blockedDates, selectedDates.length]);
+  }, [blockedDates, bookings, loadingData, selectedDates.length, sessionType]);
 
   // Total calculation (Automated: นักเรียน + ครู/ผู้ติดตาม)
   const totalAttendees = useMemo(() => {
@@ -194,17 +261,64 @@ function BookingForm() {
       alert(`ไม่สามารถเลือกวันนี้ได้ (ปิดทั้งวัน): ${blockCheck.reason || "งดรับจอง"}`);
       return;
     }
-    if (sessionType === "morning" && blockCheck.blockedMorning) {
-      alert(`รอบเช้าของวันนี้ปิดบริการ: ${blockCheck.morningReason || blockCheck.reason || "งดรับจองรอบเช้า"}`);
+
+    const dayStatus = getDayBookingStatus(dayStart);
+    if (dayStatus.isAllFull) {
+      const orgNames = dayStatus.dayBookings.map((b: any) => b.organizationName).filter(Boolean).join(", ");
+      alert(`วันที่ ${format(dayStart, 'd MMMM yyyy', { locale: th })} มีผู้จองเต็มทุกรอบแล้ว${orgNames ? ` (${orgNames})` : ""}\nกรุณาเลือกวันอื่น`);
       return;
     }
-    if (sessionType === "afternoon" && blockCheck.blockedAfternoon) {
-      alert(`รอบบ่ายของวันนี้ปิดบริการ: ${blockCheck.afternoonReason || blockCheck.reason || "งดรับจองรอบบ่าย"}`);
-      return;
-    }
-    if (sessionType === "fullday" && blockCheck.blockedFullday) {
-      alert(`ไม่สามารถเลือกเหมาทั้งวันได้เนื่องจากมีบางรอบปิดบริการ: ${blockCheck.reason || "งดรับจอง"}`);
-      return;
+
+    // Check specific session compatibility
+    if (sessionType === "morning") {
+      if (blockCheck.blockedMorning) {
+        if (!blockCheck.blockedAfternoon && !dayStatus.isAfternoonOccupied) {
+          alert(`รอบเช้าของวันนี้ปิดบริการ (${blockCheck.morningReason || "งดรับจองรอบเช้า"})\nระบบปรับเป็น "รอบบ่าย" ให้ท่านโดยอัตโนมัติ`);
+          setSessionType("afternoon");
+        } else {
+          alert(`รอบเช้าของวันนี้ปิดบริการ: ${blockCheck.morningReason || blockCheck.reason || "งดรับจองรอบเช้า"}`);
+          return;
+        }
+      } else if (dayStatus.isMorningOccupied) {
+        const bookedOrg = dayStatus.morningBooking?.organizationName || dayStatus.fulldayBooking?.organizationName || "มีผู้จองแล้ว";
+        if (!dayStatus.isAfternoonOccupied && !blockCheck.blockedAfternoon) {
+          alert(`วันที่ ${format(dayStart, 'd MMMM yyyy', { locale: th })} รอบเช้ามีผู้จองแล้ว (${bookedOrg})\nระบบได้ปรับเป็น "รอบบ่าย (13:00 - 16:00 น.)" ซึ่งยังว่างอยู่ให้ท่าน`);
+          setSessionType("afternoon");
+        } else {
+          alert(`วันที่ ${format(dayStart, 'd MMMM yyyy', { locale: th })} รอบเช้ามีผู้จองแล้ว (${bookedOrg})\nและรอบบ่ายไม่สามารถจองได้ กรุณาเลือกวันอื่น`);
+          return;
+        }
+      }
+    } else if (sessionType === "afternoon") {
+      if (blockCheck.blockedAfternoon) {
+        if (!blockCheck.blockedMorning && !dayStatus.isMorningOccupied) {
+          alert(`รอบบ่ายของวันนี้ปิดบริการ (${blockCheck.afternoonReason || "งดรับจองรอบบ่าย"})\nระบบปรับเป็น "รอบเช้า" ให้ท่านโดยอัตโนมัติ`);
+          setSessionType("morning");
+        } else {
+          alert(`รอบบ่ายของวันนี้ปิดบริการ: ${blockCheck.afternoonReason || blockCheck.reason || "งดรับจองรอบบ่าย"}`);
+          return;
+        }
+      } else if (dayStatus.isAfternoonOccupied) {
+        const bookedOrg = dayStatus.afternoonBooking?.organizationName || dayStatus.fulldayBooking?.organizationName || "มีผู้จองแล้ว";
+        if (!dayStatus.isMorningOccupied && !blockCheck.blockedMorning) {
+          alert(`วันที่ ${format(dayStart, 'd MMMM yyyy', { locale: th })} รอบบ่ายมีผู้จองแล้ว (${bookedOrg})\nระบบได้ปรับเป็น "รอบเช้า (09:00 - 12:00 น.)" ซึ่งยังว่างอยู่ให้ท่าน`);
+          setSessionType("morning");
+        } else {
+          alert(`วันที่ ${format(dayStart, 'd MMMM yyyy', { locale: th })} รอบบ่ายมีผู้จองแล้ว (${bookedOrg})\nและรอบเช้าไม่สามารถจองได้ กรุณาเลือกวันอื่น`);
+          return;
+        }
+      }
+    } else if (sessionType === "fullday") {
+      if (blockCheck.blockedFullday || blockCheck.blockedMorning || blockCheck.blockedAfternoon) {
+        alert(`ไม่สามารถเลือกเหมาทั้งวันได้เนื่องจากมีบางรอบปิดบริการ: ${blockCheck.reason || "งดรับจอง"}`);
+        return;
+      }
+      if (dayStatus.isFulldayOccupied) {
+        const bookedOrg = dayStatus.fulldayBooking?.organizationName || 
+          [dayStatus.morningBooking?.organizationName, dayStatus.afternoonBooking?.organizationName].filter(Boolean).join(", ");
+        alert(`วันที่ ${format(dayStart, 'd MMMM yyyy', { locale: th })} ไม่สามารถจองเหมาทั้งวันได้ เนื่องจากมีผู้จองแล้ว (${bookedOrg})\nกรุณาเลือกรอบที่ยังว่าง หรือเลือกวันอื่น`);
+        return;
+      }
     }
 
     if (sessionType === "fullday" && isMultiDay) {
@@ -226,6 +340,29 @@ function BookingForm() {
   };
 
   const handleSessionChange = (newSession: "morning" | "afternoon" | "fullday") => {
+    if (selectedDates.length > 0) {
+      const primaryDate = selectedDates[0];
+      const status = getDayBookingStatus(primaryDate);
+      const blockCheck = isDateBlockedByAdmin(primaryDate, blockedDates);
+
+      if (newSession === "morning" && (status.isMorningOccupied || blockCheck.blockedMorning || blockCheck.blocked)) {
+        const bookedOrg = status.morningBooking?.organizationName || status.fulldayBooking?.organizationName;
+        alert(`ไม่สามารถเลือกรอบเช้าได้: ${bookedOrg ? `มีผู้จองแล้ว (${bookedOrg})` : blockCheck.morningReason || "งดรับจองรอบเช้า"}`);
+        return;
+      }
+      if (newSession === "afternoon" && (status.isAfternoonOccupied || blockCheck.blockedAfternoon || blockCheck.blocked)) {
+        const bookedOrg = status.afternoonBooking?.organizationName || status.fulldayBooking?.organizationName;
+        alert(`ไม่สามารถเลือกรอบบ่ายได้: ${bookedOrg ? `มีผู้จองแล้ว (${bookedOrg})` : blockCheck.afternoonReason || "งดรับจองรอบบ่าย"}`);
+        return;
+      }
+      if (newSession === "fullday" && (status.isFulldayOccupied || blockCheck.blockedFullday || blockCheck.blocked)) {
+        const bookedOrg = status.fulldayBooking?.organizationName || 
+          [status.morningBooking?.organizationName, status.afternoonBooking?.organizationName].filter(Boolean).join(", ");
+        alert(`ไม่สามารถเลือกเหมาทั้งวันได้: ${bookedOrg ? `มีผู้จองแล้ว (${bookedOrg})` : blockCheck.reason || "งดรับจอง"}`);
+        return;
+      }
+    }
+
     setSessionType(newSession);
     if (newSession !== "fullday") {
       setIsMultiDay(false);
@@ -296,6 +433,27 @@ function BookingForm() {
     if (!finalTopic) {
       alert("กรุณาระบุ 'หัวข้อที่สนใจ'");
       return;
+    }
+
+    // ป้องกันการจองซ้ำวันและรอบ (Double Booking Validation)
+    for (const d of selectedDates) {
+      const status = getDayBookingStatus(d);
+      const dateFormatted = format(d, 'd MMMM yyyy', { locale: th });
+      
+      if (sessionType === "morning" && status.isMorningOccupied) {
+        const bookedBy = status.morningBooking?.organizationName || status.fulldayBooking?.organizationName || "คณะอื่น";
+        alert(`ไม่สามารถส่งคำขอจองได้ เนื่องจากวันที่ ${dateFormatted} รอบเช้ามีผู้จองแล้ว (${bookedBy})\nกรุณาเลือกรอบบ่ายหรือเลือกวันอื่น`);
+        return;
+      }
+      if (sessionType === "afternoon" && status.isAfternoonOccupied) {
+        const bookedBy = status.afternoonBooking?.organizationName || status.fulldayBooking?.organizationName || "คณะอื่น";
+        alert(`ไม่สามารถส่งคำขอจองได้ เนื่องจากวันที่ ${dateFormatted} รอบบ่ายมีผู้จองแล้ว (${bookedBy})\nกรุณาเลือกรอบเช้าหรือเลือกวันอื่น`);
+        return;
+      }
+      if (sessionType === "fullday" && status.isFulldayOccupied) {
+        alert(`ไม่สามารถส่งคำขอจองได้ เนื่องจากวันที่ ${dateFormatted} มีการจองบางรอบเวลาแล้ว ไม่สามารถเหมาทั้งวันได้\nกรุณาเลือกวันอื่น`);
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -518,24 +676,91 @@ function BookingForm() {
 
             {/* Session Type */}
             <div className="mb-8">
-              <label className="block text-xs font-black uppercase tracking-widest text-cyan-300 mb-3">
-                รอบเวลาเข้าชม <span className="text-red-400">*</span>:
-              </label>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <label className="text-xs font-black uppercase tracking-widest text-cyan-300">
+                  รอบเวลาเข้าชม <span className="text-red-400">*</span>:
+                </label>
+                {selectedDates.length > 0 && (
+                  <span className="text-xs text-slate-400 font-medium">
+                    (ตรวจสอบสถานะรอบสำหรับวันที่: <strong className="text-cyan-300 font-bold">{format(selectedDates[0], 'd MMM yyyy', { locale: th })}</strong>)
+                  </span>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {PARK_SESSIONS.map((sess) => {
                   const isSelected = sessionType === sess.id;
+                  const primaryDate = selectedDates[0];
+                  const primaryStatus = primaryDate ? getDayBookingStatus(primaryDate) : null;
+                  const primaryBlock = primaryDate ? isDateBlockedByAdmin(startOfDay(primaryDate), blockedDates) : null;
+
+                  let isOccupied = false;
+                  let occupiedOrg = "";
+                  let isBlocked = false;
+                  let blockMsg = "";
+
+                  if (primaryDate && primaryStatus) {
+                    if (sess.id === "morning") {
+                      if (primaryStatus.hasMorning) {
+                        isOccupied = true;
+                        occupiedOrg = primaryStatus.morningBooking?.organizationName || "มีผู้จองแล้ว";
+                      } else if (primaryStatus.hasFullday) {
+                        isOccupied = true;
+                        occupiedOrg = primaryStatus.fulldayBooking?.organizationName ? `${primaryStatus.fulldayBooking.organizationName} (เหมาวัน)` : "มีผู้จองแล้ว (เหมาวัน)";
+                      }
+                      if (primaryBlock?.blocked || primaryBlock?.blockedMorning) {
+                        isBlocked = true;
+                        blockMsg = primaryBlock.morningReason || primaryBlock.reason || "งดรับจอง";
+                      }
+                    } else if (sess.id === "afternoon") {
+                      if (primaryStatus.hasAfternoon) {
+                        isOccupied = true;
+                        occupiedOrg = primaryStatus.afternoonBooking?.organizationName || "มีผู้จองแล้ว";
+                      } else if (primaryStatus.hasFullday) {
+                        isOccupied = true;
+                        occupiedOrg = primaryStatus.fulldayBooking?.organizationName ? `${primaryStatus.fulldayBooking.organizationName} (เหมาวัน)` : "มีผู้จองแล้ว (เหมาวัน)";
+                      }
+                      if (primaryBlock?.blocked || primaryBlock?.blockedAfternoon) {
+                        isBlocked = true;
+                        blockMsg = primaryBlock.afternoonReason || primaryBlock.reason || "งดรับจอง";
+                      }
+                    } else if (sess.id === "fullday") {
+                      if (primaryStatus.hasFullday) {
+                        isOccupied = true;
+                        occupiedOrg = primaryStatus.fulldayBooking?.organizationName || "มีผู้จองแล้ว";
+                      } else if (primaryStatus.hasMorning && primaryStatus.hasAfternoon) {
+                        isOccupied = true;
+                        occupiedOrg = "จองเต็มทั้งเช้าและบ่าย";
+                      } else if (primaryStatus.hasMorning) {
+                        isOccupied = true;
+                        occupiedOrg = `เช้ามีจองแล้ว (${primaryStatus.morningBooking?.organizationName || ""})`;
+                      } else if (primaryStatus.hasAfternoon) {
+                        isOccupied = true;
+                        occupiedOrg = `บ่ายมีจองแล้ว (${primaryStatus.afternoonBooking?.organizationName || ""})`;
+                      }
+                      if (primaryBlock?.blocked || primaryBlock?.blockedFullday || primaryBlock?.blockedMorning || primaryBlock?.blockedAfternoon) {
+                        isBlocked = true;
+                        blockMsg = primaryBlock.reason || "งดรับจอง";
+                      }
+                    }
+                  }
+
+                  const isDisabled = isOccupied || isBlocked;
+
                   return (
                     <button
                       key={sess.id}
                       type="button"
                       onClick={() => handleSessionChange(sess.id)}
                       className={`p-5 rounded-3xl border-2 text-left transition-all relative overflow-hidden flex flex-col justify-between ${
-                        isSelected
+                        isDisabled
+                          ? "bg-slate-900/40 border-red-500/30 text-slate-400 hover:border-red-400"
+                          : isSelected
                           ? "bg-gradient-to-br from-cyan-950/80 to-blue-900/60 border-cyan-400 shadow-xl shadow-cyan-950/50"
                           : "bg-slate-900/60 border-cyan-500/20 hover:border-cyan-500/40 text-slate-300"
                       }`}
                     >
-                      {isSelected && (
+                      {isSelected && !isDisabled && (
                         <div className="absolute top-3 right-3 w-6 h-6 bg-cyan-400 text-slate-950 rounded-full flex items-center justify-center font-bold">
                           <Check size={14} />
                         </div>
@@ -545,7 +770,27 @@ function BookingForm() {
                           <Clock size={12} /> {sess.startTime} - {sess.endTime} น.
                         </div>
                         <h3 className="text-base font-black text-white mb-1">{sess.name}</h3>
-                        <p className="text-xs text-slate-400 leading-relaxed">{sess.description}</p>
+                        <p className="text-xs text-slate-400 leading-relaxed mb-3">{sess.description}</p>
+                      </div>
+
+                      {/* Real-time Session Status Badge */}
+                      <div className="pt-2.5 border-t border-white/10">
+                        {isOccupied ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-red-950/90 border border-red-500/40 text-red-300 text-xs font-bold w-full">
+                            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
+                            <span className="truncate">มีผู้จองแล้ว: <strong className="text-white underline">{occupiedOrg}</strong></span>
+                          </div>
+                        ) : isBlocked ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-red-950/90 border border-red-500/40 text-red-300 text-xs font-bold w-full">
+                            <AlertTriangle size={12} className="text-red-400 shrink-0" />
+                            <span className="truncate">ปิดบริการ: {blockMsg}</span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-xs font-bold">
+                            <CheckCircle2 size={12} className="text-emerald-400 shrink-0" />
+                            <span>ว่าง เปิดรับจอง</span>
+                          </div>
+                        )}
                       </div>
                     </button>
                   );
@@ -579,6 +824,114 @@ function BookingForm() {
                 </div>
               )}
             </div>
+
+            {/* Selected Date Real-Time Status Card */}
+            {selectedDates.length > 0 && (() => {
+              const primaryDate = selectedDates[0];
+              const pStatus = getDayBookingStatus(primaryDate);
+              const pBlock = isDateBlockedByAdmin(startOfDay(primaryDate), blockedDates);
+
+              return (
+                <div className="mb-6 p-4 sm:p-5 rounded-3xl bg-slate-950/90 border border-cyan-500/30 shadow-xl space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+                    <div className="flex items-center gap-2">
+                      <CalendarCheck size={20} className="text-cyan-400" />
+                      <div>
+                        <h4 className="text-sm sm:text-base font-black text-white">
+                          สถานะคิววันที่: {format(primaryDate, 'EEEEที่ d MMMM yyyy', { locale: th })}
+                        </h4>
+                        <p className="text-[11px] text-slate-400">
+                          แสดงผลแบบ Real-time ตรวจสอบความพร้อมของแต่ละรอบก่อนส่งคำขอจอง
+                        </p>
+                      </div>
+                    </div>
+                    {pStatus.isAllFull ? (
+                      <span className="px-3 py-1 rounded-full text-xs font-black bg-red-950 border border-red-500/40 text-red-300">
+                        🔴 มีผู้จองเต็มทุกรอบแล้ว
+                      </span>
+                    ) : (pStatus.hasMorning || pStatus.hasAfternoon) ? (
+                      <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-950 border border-amber-500/40 text-amber-300">
+                        ⚠️ มีจองบางรอบ (ยังมีรอบว่าง)
+                      </span>
+                    ) : (
+                      <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-950 border border-emerald-500/40 text-emerald-300">
+                        🟢 ว่างทุกรอบเวลา
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    {/* รอบเช้า */}
+                    <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
+                      pStatus.isMorningOccupied || pBlock.blockedMorning || pBlock.blocked
+                        ? "bg-red-950/20 border-red-500/30 text-red-200"
+                        : "bg-emerald-950/20 border-emerald-500/30 text-emerald-200"
+                    }`}>
+                      <div>
+                        <span className="font-black text-white text-xs block">
+                          รอบเช้า (09:00 - 12:00 น.)
+                        </span>
+                        {pStatus.isMorningOccupied ? (
+                          <span className="text-[11px] text-red-300 font-bold block mt-0.5">
+                            🔴 มีผู้จองแล้ว: <strong className="text-white underline">{pStatus.morningBooking?.organizationName || pStatus.fulldayBooking?.organizationName || "มีผู้จองแล้ว"}</strong>
+                            {pStatus.morningBooking?.totalAttendees ? ` (${pStatus.morningBooking.totalAttendees} คน)` : ""}
+                          </span>
+                        ) : pBlock.blockedMorning || pBlock.blocked ? (
+                          <span className="text-[11px] text-red-300 font-bold block mt-0.5">
+                            🚫 ปิดบริการ: {pBlock.morningReason || pBlock.reason || "งดรับจอง"}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-emerald-400 font-medium block mt-0.5">
+                            🟢 ว่าง - พร้อมเปิดรับจอง
+                          </span>
+                        )}
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black shrink-0 ${
+                        pStatus.isMorningOccupied || pBlock.blockedMorning || pBlock.blocked
+                          ? "bg-red-500/20 text-red-300 border border-red-500/30"
+                          : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                      }`}>
+                        {pStatus.isMorningOccupied ? "มีผู้จองแล้ว" : pBlock.blockedMorning || pBlock.blocked ? "ปิดบริการ" : "ว่าง"}
+                      </span>
+                    </div>
+
+                    {/* รอบบ่าย */}
+                    <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
+                      pStatus.isAfternoonOccupied || pBlock.blockedAfternoon || pBlock.blocked
+                        ? "bg-red-950/20 border-red-500/30 text-red-200"
+                        : "bg-emerald-950/20 border-emerald-500/30 text-emerald-200"
+                    }`}>
+                      <div>
+                        <span className="font-black text-white text-xs block">
+                          รอบบ่าย (13:00 - 16:00 น.)
+                        </span>
+                        {pStatus.isAfternoonOccupied ? (
+                          <span className="text-[11px] text-red-300 font-bold block mt-0.5">
+                            🔴 มีผู้จองแล้ว: <strong className="text-white underline">{pStatus.afternoonBooking?.organizationName || pStatus.fulldayBooking?.organizationName || "มีผู้จองแล้ว"}</strong>
+                            {pStatus.afternoonBooking?.totalAttendees ? ` (${pStatus.afternoonBooking.totalAttendees} คน)` : ""}
+                          </span>
+                        ) : pBlock.blockedAfternoon || pBlock.blocked ? (
+                          <span className="text-[11px] text-red-300 font-bold block mt-0.5">
+                            🚫 ปิดบริการ: {pBlock.afternoonReason || pBlock.reason || "งดรับจอง"}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-emerald-400 font-medium block mt-0.5">
+                            🟢 ว่าง - พร้อมเปิดรับจอง
+                          </span>
+                        )}
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black shrink-0 ${
+                        pStatus.isAfternoonOccupied || pBlock.blockedAfternoon || pBlock.blocked
+                          ? "bg-red-500/20 text-red-300 border border-red-500/30"
+                          : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                      }`}>
+                        {pStatus.isAfternoonOccupied ? "มีผู้จองแล้ว" : pBlock.blockedAfternoon || pBlock.blocked ? "ปิดบริการ" : "ว่าง"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Interactive Calendar */}
             <div>
@@ -626,11 +979,13 @@ function BookingForm() {
                     const isOp = isOperationalDay(dayStart);
                     const isPastOrOver = isBefore(dayStart, today) || isAfter(dayStart, maxDate);
                     const blockInfo = isDateBlockedByAdmin(dayStart, blockedDates);
+                    const dayStatus = getDayBookingStatus(dayStart);
 
                     const isClickable = isCurrentMonthDay && isOp && !isPastOrOver && !blockInfo.blocked;
 
                     let bgClasses = "bg-slate-900/40 text-slate-600 cursor-not-allowed";
                     let badge = null;
+                    let subBadge = null;
 
                     if (!isCurrentMonthDay) {
                       bgClasses = "opacity-20 pointer-events-none";
@@ -641,13 +996,38 @@ function BookingForm() {
                       badge = <span className="text-[9px] text-slate-500">ปิดทำการ</span>;
                     } else if (blockInfo.blocked) {
                       bgClasses = "bg-red-950/30 text-red-400/80 border border-red-500/20 cursor-not-allowed";
-                      badge = <span className="text-[9px] text-red-400">งดรับจอง</span>;
+                      badge = <span className="text-[9px] text-red-400 font-bold">🚫 งดรับจอง</span>;
+                    } else if (dayStatus.isAllFull) {
+                      bgClasses = isSelected 
+                        ? "bg-red-950/90 text-red-200 border-2 border-red-400 font-bold" 
+                        : "bg-red-950/30 text-red-300 border border-red-500/30 hover:border-red-400 cursor-pointer";
+                      badge = <span className="text-[8px] sm:text-[9px] text-red-300 bg-red-950/90 px-1 py-0.5 rounded font-black border border-red-500/40">🔴 เต็มทุกรอบ</span>;
+                    } else if (dayStatus.hasMorning && !dayStatus.hasAfternoon) {
+                      bgClasses = isSelected
+                        ? "bg-gradient-to-tr from-cyan-600 to-blue-700 text-white font-black shadow-lg shadow-cyan-500/40 border-2 border-white scale-95"
+                        : "bg-amber-950/20 text-slate-200 border border-amber-500/30 hover:border-cyan-400 cursor-pointer";
+                      badge = isSelected 
+                        ? <span className="text-[9px] font-black text-white">เลือกแล้ว</span> 
+                        : <span className="text-[8px] sm:text-[9px] text-amber-300 font-bold bg-amber-950/80 px-1 py-0.5 rounded border border-amber-500/30">เช้าจองแล้ว</span>;
+                      if (!isSelected) {
+                        subBadge = <span className="text-[8px] text-emerald-400 font-bold">บ่ายว่าง</span>;
+                      }
+                    } else if (!dayStatus.hasMorning && dayStatus.hasAfternoon) {
+                      bgClasses = isSelected
+                        ? "bg-gradient-to-tr from-cyan-600 to-blue-700 text-white font-black shadow-lg shadow-cyan-500/40 border-2 border-white scale-95"
+                        : "bg-amber-950/20 text-slate-200 border border-amber-500/30 hover:border-cyan-400 cursor-pointer";
+                      badge = isSelected 
+                        ? <span className="text-[9px] font-black text-white">เลือกแล้ว</span> 
+                        : <span className="text-[8px] sm:text-[9px] text-amber-300 font-bold bg-amber-950/80 px-1 py-0.5 rounded border border-amber-500/30">บ่ายจองแล้ว</span>;
+                      if (!isSelected) {
+                        subBadge = <span className="text-[8px] text-emerald-400 font-bold">เช้าว่าง</span>;
+                      }
                     } else if (isSelected) {
                       bgClasses = "bg-gradient-to-tr from-cyan-500 to-blue-600 text-slate-950 font-black shadow-lg shadow-cyan-500/40 border-2 border-white scale-95";
                       badge = <span className="text-[9px] font-black text-slate-950">เลือกแล้ว</span>;
                     } else {
                       bgClasses = "bg-slate-900/90 text-white border border-emerald-500/20 hover:border-cyan-400 hover:bg-slate-800 cursor-pointer";
-                      badge = <span className="text-[9px] text-emerald-400">เปิดรับ</span>;
+                      badge = <span className="text-[9px] text-emerald-400 font-bold">🟢 ว่างทุกรอบ</span>;
                     }
 
                     return (
@@ -656,10 +1036,13 @@ function BookingForm() {
                         type="button"
                         onClick={() => isClickable && handleDateClick(day)}
                         disabled={!isClickable}
-                        className={`min-h-[60px] sm:min-h-[72px] p-1.5 rounded-2xl flex flex-col justify-between items-center transition-all text-xs font-bold ${bgClasses}`}
+                        className={`min-h-[64px] sm:min-h-[76px] p-1.5 rounded-2xl flex flex-col justify-between items-center transition-all text-xs font-bold ${bgClasses}`}
                       >
                         <span>{format(day, 'd')}</span>
-                        {badge}
+                        <div className="flex flex-col items-center gap-0.5 w-full">
+                          {badge}
+                          {subBadge}
+                        </div>
                       </button>
                     );
                   })}
